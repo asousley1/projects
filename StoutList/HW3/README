@@ -1,0 +1,16 @@
+# StoutList - Custom Doubly-Linked List in Java
+
+## Overview
+`StoutList` is a doubly-linked list where each node can store up to **M elements** in an array. This design reduces the number of nodes while supporting standard Java `List` operations.
+
+## Key Features
+- Implements `List` and `ListIterator` interfaces
+- Supports `add`, `remove`, `get`, `size`, and iteration
+- Custom `StoutIterator` (forward-only) and `StoutListIterator` (full bidirectional)
+- Handles node **split and merge** automatically
+- Sorting methods: `sort()` (insertion sort) and `sortReverse()` (bubble sort)
+
+## Usage
+- Each node contains an array of elements; empty slots are `null`
+- `toStringInternal()` visualizes internal node structure
+- Null elements are **not allowed**
