@@ -1,0 +1,16 @@
+import java.util.HashMap;
+
+public class assignment2 {
+	public static HashMap<Integer, String> flags = new HashMap();
+	public static HashMap<Integer, String> opcodes = new HashMap();
+	
+	public static void main(String[] args) {
+		opcodes.put(0b10001011000, "ADD");
+		opcodes.put(0b1001000100, "ADDI");
+		opcodes.put(0b1011000100, "ADDIS");
+		opcodes.put(0b10101011000, "ADDS");
+		opcodes.put(0b10001010000, "AND");
+		opcodes.put(0b1001001000, "ANDI");
+		
+	}
+}

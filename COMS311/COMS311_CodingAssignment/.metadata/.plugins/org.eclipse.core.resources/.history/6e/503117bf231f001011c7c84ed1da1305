@@ -1,0 +1,63 @@
+package cs3110.hw4;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+public class CharacterSeparator {
+    /**
+     * This method uses the WeightedAdjacencyList class to identify the space between characters in an image of text.
+     * For efficiency, it should only construct a single graph object and should only make a constant
+     * number of calls to Dijkstra's algorithm.
+     * @param path The location of the image on disk.
+     * @return Two lists of Integer. The first list indicates whitespace rows. The second list indicates whitespace columns. Returns null if some error occurred loading the image.
+     */
+    public static Pair<List<Integer>, List<Integer>> findSeparationWeighted(String path) {
+    	BitmapProcessor BP;
+    	int[][] pixels = null;
+    	
+    	try {
+			BP = new BitmapProcessor(path);
+			pixels = BP.getRGBMatrix();
+			
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    	int height = pixels.length;
+    	int width = pixels[0].length;
+    	
+    	WeightedAdjacencyList<Pair<Integer, Integer>> graph = new WeightedAdjacencyList<>(new ArrayList<>());
+    	Pair<Integer, Integer>[][] nodes = new Pair[height][width];
+    	
+    	//Set up vertices
+    	for (int y = 0; y < height; y++) {
+    		for (int x = 0; x < width; x++) {
+   
+        		Pair<Integer, Integer> current = new Pair(x, y);
+        		nodes[y][x] = current;
+        		graph.addVertex(current);
+    			
+    		}	
+    	}
+    	for(int y = 0; y < height; y++) {
+    		for (int x = 0; x < width; x++) {
+    			Pair <Integer, Integer> current = nodes[y][x];
+    			if (x + 1 < width) {
+    				Pair<Integer, Integer> right = nodes[y][x + 1];
+    				int weight = pixels[y][x + 1] * -1;
+    				graph.addEdge(current, right, weight);
+    			}
+    			if (y + 1 < height) {
+    				Pair<Integer, Integer> down = nodes[y + 1][x];
+    				int weight = pixels[y + 1][x] * -1;
+    				graph.addEdge(current, down, weight);
+    			}
+    		}
+    	}
+    	
+        return null;
+    }
+}

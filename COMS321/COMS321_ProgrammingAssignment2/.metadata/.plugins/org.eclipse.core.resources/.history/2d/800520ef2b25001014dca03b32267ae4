@@ -1,0 +1,26 @@
+import java.util.HashMap;
+
+public class assignment2 {
+	public static HashMap<Integer, String> flags = new HashMap();
+	public static HashMap<Integer, String> opcodes = new HashMap();
+	
+	public static void main(String[] args) {
+		opcodes.put(0b10001011000, "ADD");
+		opcodes.put(0b1001000100, "ADDI");
+		opcodes.put(0b1011000100, "ADDIS");
+		opcodes.put(0b10101011000, "ADDS");
+		opcodes.put(0b10001010000, "AND");
+		opcodes.put(0b1001001000, "ANDI");
+		opcodes.put(0b1111001000, "ANDIS");
+		opcodes.put(0b1110101000, "ANDS");
+		opcodes.put(0b000101, "B");
+		opcodes.put(0b100101 , "BL");
+		opcodes.put(0b11010110000, "BR");
+		opcodes.put(0b10110101, "CBNZ");
+		opcodes.put(0b10110100, "CBZ");
+		opcodes.put(0b11111111110, "DUMP");
+		opcodes.put(0b11001010000, "EOR");
+		opcodes.put(0b1101001000, "EORI");
+		
+	}
+}

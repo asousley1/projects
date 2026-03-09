@@ -1,0 +1,505 @@
+//@Aidan Sousley
+// asoulsey@iastate.edu
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.ByteOrder;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.HashMap;
+
+public class disassembler {
+	public static HashMap<Integer, String> flags = new HashMap();
+	public static HashMap<String, Integer> opcodes = new HashMap();
+	public static int instructionCount = 1;
+	
+	public static void main(String[] args) {
+		opcodes.put("ADD", 0b10001011000);
+		opcodes.put("ADDI", 0b1001000100);
+		opcodes.put("AND", 0b10001010000);
+		opcodes.put("ANDI", 0b1001001000);
+		opcodes.put("B", 0b000101);
+		opcodes.put("B.", 0b01010100);
+		opcodes.put("BL", 0b100101);
+		opcodes.put("BR", 0b11010110000);
+		opcodes.put("CBNZ", 0b10110101);
+		opcodes.put("CBZ", 0b10110100);
+		opcodes.put("DUMP", 0b11111111110);
+		opcodes.put("EOR", 0b11001010000);
+		opcodes.put("EORI", 0b1101001000);
+		opcodes.put("HALT", 0b11111111111);
+		opcodes.put("LDUR", 0b11111000010);
+		opcodes.put("LSL", 0b11010011011);
+		opcodes.put("LSR", 0b11010011010);
+		opcodes.put("MUL", 0b10011011000);
+		opcodes.put("ORR", 0b10101010000);
+		opcodes.put("ORRI", 0b1011001000);
+		opcodes.put("PRNL", 0b11111111100);
+		opcodes.put("PRNT", 0b11111111100);
+		opcodes.put("STUR", 0b11111000000);
+		opcodes.put("SUB", 0b11001011000);
+		opcodes.put("SUBI", 0b1101000100);
+		opcodes.put("SUBIS", 0b1111000100);
+		opcodes.put("SUBS", 0b11101011000);
+		
+		flags.put(0x0, "EQ");
+        flags.put(0x1, "NE");
+        flags.put(0x2, "HS");
+        flags.put(0x3, "LO");
+        flags.put(0x4, "MI");
+        flags.put(0x5, "PL");
+        flags.put(0x6, "VS");
+        flags.put(0x7, "VC");
+        flags.put(0x8, "HI");
+        flags.put(0x9, "LS");
+        flags.put(0xa, "GE");
+        flags.put(0xb, "LT");
+        flags.put(0xc, "GT");
+        flags.put(0xd, "LE");
+		Path filePath = Paths.get(args[0]);
+		try {
+			FileChannel fc = FileChannel.open(filePath, StandardOpenOption.READ);
+			long fileSize = fc.size();
+			MappedByteBuffer buffer = fc.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
+			buffer.order(ByteOrder.BIG_ENDIAN);
+			
+			int instructionCount = (int) fileSize / 4;
+			
+			for (int i = 0; i < instructionCount; i++) {
+				int rawInstruction = buffer.getInt();
+				decode(rawInstruction);
+			}
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	public static void decode(int instruction) {
+		String instructionLine = "";
+		
+		int RD_opcode = instruction >> 21 & 0x7FF;
+		
+		int I_opcode = instruction >> 22 & 0x3FF;
+		
+		int B_opcode = instruction >> 26 & 0x3F;
+		
+		int CB_Opcode = instruction >> 24 & 0xFF;
+		
+		if (opcodes.containsValue(RD_opcode)) {
+			if (RD_opcode == opcodes.get("ADD")) {
+				instructionLine = decodeRD(instruction, "ADD");
+				
+			}
+			else if (RD_opcode == opcodes.get("AND")) {
+				instructionLine = decodeRD(instruction, "AND");
+			}
+			else if (RD_opcode == opcodes.get("EOR")) {
+				instructionLine = decodeRD(instruction, "EOR");
+			}
+			else if (RD_opcode == opcodes.get("ORR")) {
+				instructionLine = decodeRD(instruction, "ORR");
+			}
+			else if (RD_opcode == opcodes.get("SUB")) {
+				instructionLine = decodeRD(instruction, "SUB");
+			}
+			else if (RD_opcode == opcodes.get("SUBS")) {
+				instructionLine = decodeRD(instruction, "SUBS");
+			}
+			else if (RD_opcode == opcodes.get("MUL")) {
+				instructionLine = decodeRD(instruction, "MUL");
+			}
+			//BR
+			else if (RD_opcode == opcodes.get("BR")) {
+				instructionLine = "BR";
+				int Rn = instruction >> 5 & 0x1F;
+				if (Rn == 28) {
+					instructionLine += " SP";
+				}
+				else if (Rn == 29) {
+					instructionLine += " FP";
+				}
+				else if (Rn == 30) {
+					instructionLine += " LR";
+				}
+				else if (Rn == 31) {
+					instructionLine += " XZR";
+				}
+				else {
+					instructionLine += (" X" + Rn);
+				}
+			}
+			//LSL
+			else if (RD_opcode == opcodes.get("LSL")) {
+				int Rd = instruction & 0x1F;
+				instructionLine = "LSL";
+				if (Rd == 28) {
+					instructionLine += " SP";
+				}
+				else if (Rd == 29) {
+					instructionLine += " FP";
+				}
+				else if (Rd == 30) {
+					instructionLine += " LR";
+				}
+				else if (Rd == 31) {
+					instructionLine += " XZR";
+				}
+				else {
+					instructionLine += (" X" + Rd);
+				}
+				
+				int Rn = instruction >> 5 & 0x1F;
+				if (Rn == 28) {
+					instructionLine += ", SP";
+				}
+				else if (Rn == 29) {
+					instructionLine += ", FP";
+				}
+				else if (Rn == 30) {
+					instructionLine += ", LR";
+				}
+				else if (Rn == 31) {
+					instructionLine += ", XZR";
+				}
+				else {
+					instructionLine += (", X" + Rn);
+				}
+				
+				int shamt = instruction >> 10 & 0x3F;
+				if (shamt >= 32) {
+					shamt -= 64;
+				}
+				instructionLine += (", #" + shamt);
+			}
+			//LSR
+			else if (RD_opcode == opcodes.get("LSR")) {
+				int Rd = instruction & 0x1F;
+				instructionLine = "LSR";
+				if (Rd == 28) {
+					instructionLine += " SP";
+				}
+				else if (Rd == 29) {
+					instructionLine += " FP";
+				}
+				else if (Rd == 30) {
+					instructionLine += " LR";
+				}
+				else if (Rd == 31) {
+					instructionLine += " XZR";
+				}
+				else {
+					instructionLine += (" X" + Rd);
+				}
+				
+				int Rn = instruction >> 5 & 0x1F;
+				if (Rn == 28) {
+					instructionLine += ", SP";
+				}
+				else if (Rn == 29) {
+					instructionLine += ", FP";
+				}
+				else if (Rn == 30) {
+					instructionLine += ", LR";
+				}
+				else if (Rn == 31) {
+					instructionLine += ", XZR";
+				}
+				else {
+					instructionLine += (", X" + Rn);
+				}
+				
+				int shamt = instruction >> 10 & 0x3F;
+				if (shamt >= 32) {
+					shamt -= 64;
+				}
+				instructionLine += (", #" + shamt);
+			}
+			//PRNT
+			else if(RD_opcode == opcodes.get("PRNT")) {
+				int Rd = instruction & 0x1F;
+				instructionLine = "PRNT";
+				if (Rd == 28) {
+					instructionLine += " SP";
+				}
+				else if (Rd == 29) {
+					instructionLine += " FP";
+				}
+				else if (Rd == 30) {
+					instructionLine += " LR";
+				}
+				else if (Rd == 31) {
+					instructionLine += " XZR";
+				}
+				else {
+					instructionLine += (" X" + Rd);
+				}
+			}
+			else if (RD_opcode == opcodes.get("DUMP")) {
+				instructionLine = "DUMP";
+			}
+			else if (RD_opcode == opcodes.get("PRNL")) {
+				instructionLine = "PRNL";
+			}
+			else if (RD_opcode == opcodes.get("HALT")){
+				instructionLine = "HALT";
+			}
+			//LDUR
+			else if (RD_opcode == opcodes.get("LDUR")){
+				instructionLine = "LDUR";
+				int Rt = instruction & 0x1F;
+				if (Rt == 28) {
+					instructionLine += " SP";
+				}
+				else if (Rt == 29) {
+					instructionLine += " FP";
+				}
+				else if (Rt == 30) {
+					instructionLine += " LR";
+				}
+				else if (Rt == 31) {
+					instructionLine += " XZR";
+				}
+				else {
+					instructionLine += (" X" + Rt);
+				}
+				int Rn = instruction >> 5 & 0x1F;
+				if (Rn == 28) {
+					instructionLine += ", [SP";
+				}
+				else if (Rn == 29) {
+					instructionLine += ", [FP";
+				}
+				else if (Rn == 30) {
+					instructionLine += ", [LR";
+				}
+				else if (Rn == 31) {
+					instructionLine += ", [XZR";
+				}
+				else {
+					instructionLine += (", [X" + Rn);
+				}
+				
+				int DT = instruction >> 12 & 0x1FF;
+				if(DT >= 256) {
+					DT -= 512;
+				}
+				
+				instructionLine += ", #" + DT + "]";
+			}
+			else if (RD_opcode == opcodes.get("STUR")){
+				instructionLine = "STUR";
+				int Rt = instruction & 0x1F;
+				if (Rt == 28) {
+					instructionLine += " SP";
+				}
+				else if (Rt == 29) {
+					instructionLine += " FP";
+				}
+				else if (Rt == 30) {
+					instructionLine += " LR";
+				}
+				else if (Rt == 31) {
+					instructionLine += " XZR";
+				}
+				else {
+					instructionLine += (" X" + Rt);
+				}
+				int Rn = instruction >> 5 & 0x1F;
+				if (Rn == 28) {
+					instructionLine += ", [SP";
+				}
+				else if (Rn == 29) {
+					instructionLine += ", [FP";
+				}
+				else if (Rn == 30) {
+					instructionLine += ", [LR";
+				}
+				else if (Rn == 31) {
+					instructionLine += ", [XZR";
+				}
+				else {
+					instructionLine += (", [X" + Rn);
+				}
+				
+				int DT = instruction >> 12 & 0x1FF;
+				if(DT >= 256) {
+					DT -= 512;
+				}
+				
+				instructionLine += ", #" + DT + "]";
+			}
+			else {
+				//nothing
+			}
+		}
+		else if(opcodes.containsValue(I_opcode)) {
+			if (I_opcode == opcodes.get("ADDI")) {
+				instructionLine = "ADDI";
+			}
+			else if (I_opcode == opcodes.get("ANDI")) {
+				instructionLine += "ANDI";
+			}
+			else if (I_opcode == opcodes.get("EORI")) {
+				instructionLine += "EORI";
+			}
+			else if (I_opcode == opcodes.get("ORRI")) {
+				instructionLine += "ORRI";
+			}
+			else if (I_opcode == opcodes.get("SUBI")) {
+				instructionLine += "SUBI";
+			}
+			else if (I_opcode == opcodes.get("SUBI")) {
+				instructionLine += "SUBI";
+			}
+			else if (I_opcode == opcodes.get("SUBIS")) {
+				instructionLine += "SUBIS";
+			}
+			int Rd = instruction & 0x1F;
+			if (Rd == 28) {
+				instructionLine += " SP";
+			}
+			else if (Rd == 29) {
+				instructionLine += " FP";
+			}
+			else if (Rd == 30) {
+				instructionLine += " LR";
+			}
+			else if (Rd == 31) {
+				instructionLine += " XZR";
+			}
+			else {
+				instructionLine += (" X" + Rd);
+			}
+			
+			int Rn = instruction >> 5 & 0x1F;
+			if (Rn == 28) {
+				instructionLine += ", SP";
+			}
+			else if (Rn == 29) {
+				instructionLine += ", FP";
+			}
+			else if (Rn == 30) {
+				instructionLine += ", LR";
+			}
+			else if (Rn == 31) {
+				instructionLine += ", XZR";
+			}
+			else {
+				instructionLine += (", X" + Rn);
+			}
+			
+			int ALU = instruction >>10 & 0xFFF;
+			if (ALU >= 2048) {
+				ALU -= 4096;
+			}
+			instructionLine += ", #" + ALU;
+		}
+		else if (opcodes.containsValue(CB_Opcode)) {
+			if (CB_Opcode == opcodes.get("B.")) {
+				instructionLine = "B.";
+				int condition = instruction & 0x1F;
+				instructionLine += flags.get(condition);
+				int branch = instruction >> 5 & 0x7FFFF;
+				if(branch >= 262144) {
+					branch -= 524288;
+				}
+				
+				instructionLine += " L" + (instructionCount + branch);
+			}
+			else {
+				if (CB_Opcode == opcodes.get("CBNZ")) {
+					instructionLine = "CBNZ";
+				}
+				else if (CB_Opcode == opcodes.get("CBZ")) {
+					instructionLine = "CBZ";
+				}
+				int Rt = instruction & 0x1F;
+				instructionLine += " X" + Rt;
+				
+				int branch = instruction >> 5 & 0x7FFFF;
+				if(branch >= 262144) {
+					branch -= 524288;
+				}
+				
+				instructionLine += ", L" + (instructionCount + branch);
+			}
+		}
+		else if (opcodes.containsValue(B_opcode)) {
+			if (B_opcode == opcodes.get("B")) {
+				instructionLine = "B";
+			}
+			else if (B_opcode == opcodes.get("BL")) {
+				instructionLine = "BL";
+			}
+			int branch = instruction & 0x3FFFFFF;
+			if (branch >= 33554432) {
+				branch -= 67108864;
+			}
+			instructionLine += " L" + (instructionCount + branch);
+		}
+		else {
+			System.out.println("ERROR: opcode not found :(");
+		}
+		
+		System.out.println("L" + instructionCount + ": " + instructionLine);
+		instructionCount++;
+	}
+	public static String decodeRD(int instruction, String mnemonic) {
+		int Rd = instruction & 0x1F;
+		String instructionLine = mnemonic;
+		if (Rd == 28) {
+			instructionLine += " SP";
+		}
+		else if (Rd == 29) {
+			instructionLine += " FP";
+		}
+		else if (Rd == 30) {
+			instructionLine += " LR";
+		}
+		else if (Rd == 31) {
+			instructionLine += " XZR";
+		}
+		else {
+			instructionLine += (" X" + Rd);
+		}
+		
+		int Rn = instruction >> 5 & 0x1F;
+		if (Rn == 28) {
+			instructionLine += ", SP";
+		}
+		else if (Rn == 29) {
+			instructionLine += ", FP";
+		}
+		else if (Rn == 30) {
+			instructionLine += ", LR";
+		}
+		else if (Rn == 31) {
+			instructionLine += ", XZR";
+		}
+		else {
+			instructionLine += (", X" + Rn);
+		}
+		
+		int Rm = instruction >> 16 & 0x1F;
+		if (Rm == 28) {
+			instructionLine += ", SP";
+		}
+		else if (Rm == 29) {
+			instructionLine += ", FP";
+		}
+		else if (Rm == 30) {
+			instructionLine += ", LR";
+		}
+		else if (Rm == 31) {
+			instructionLine += ", XZR";
+		}
+		else {
+			instructionLine += (", X" + Rm);
+		}
+		return instructionLine;
+	}
+}

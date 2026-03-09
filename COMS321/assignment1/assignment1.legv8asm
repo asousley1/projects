@@ -1,0 +1,233 @@
+// Aidan Sousley   asousley@iastate.edu
+main:
+
+    ADD X0, XZR, XZR        // Array Adress = X0 (a)
+    ADDI X1, XZR, #100       // # of elements in Array (s)
+
+    BL fill
+
+    BL heapsort
+
+
+
+    BL end
+
+fill:
+                        // 10
+    ADD X11, XZR, XZR  // i
+
+    SUBIS XZR, X10, #2   //if (s >= 2) go to end fill
+
+    B.GE fill_loop_end
+
+    loop_fill:
+
+     ADD X9, X0, XZR // A
+     ADD X10, X1, XZR // S
+//20
+     LSR X14, X10, #1    // S / 2
+     SUBS XZR, X11, X14
+     B.GE fill_end
+
+     ADDI X10, X10, #1
+
+     LSR X10, X10, #1
+     SUB X10, X10, X11 // X10 - i
+     SUBI X10, X10, #1 // X10 - 1
+     LSL X10, X10, #3  // X10 = X10 * 8     30
+     ADD X9, X9, X10   // x9 = address + X12
+     ADD X13, X11, XZR // i temp
+     LSL X13, X13, #1   // i + 1
+     STUR X13, [X9, #0]
+
+     ADD X9, X0, XZR
+     ADD X13, X11, XZR  //X13 back to I
+     ADD X10, X1, XZR    // X10 back to S
+
+     ADDI X10, X10, #1   //S + 1         
+     LSR X10, X10, #1   //(S+1) / 2
+     ADD X10, X10, X11
+     LSL X10, X10, #3 // * 8
+     ADD X9, X9, X10
+     LSL X13, X13, #1     // I * 2
+     ADDI X13, X13, #1   // I * 2 + 1
+     STUR X13, [X9, #0]  // STORE
+
+     ADDI X11, X11, #1  //i + 1
+
+     B loop_fill
+
+     fill_loop_end:                       
+
+     ANDI X14, X10, #1
+     CBZ X14, fill_end
+     SUBI X10, X10, #1
+     STUR X10, [X0, #0]
+
+     fill_end:                         
+
+     BR LR
+swap:
+    // X2 = I
+    // X9 = child
+     
+    LSL X12, X1, #3   // address for a[i]
+     
+    LSL X13, X2, #3   // address for a[child]
+    ADD X13, X13, X0
+    ADD X12, X12, X0
+     
+    LDUR X10, [X12, #0]  // X10 = a[i]      
+    LDUR X11, [X13, #0] // X11 = a[child]  
+     
+     
+    ADD X15, X10, XZR   // Temp = a[i]
+    ADD X10, X11, XZR   // a[i] = a[child]
+    ADD X11, X15, XZR   // a[child] = temp
+    STUR X10, [X12, #0]  // store
+    STUR X11, [X13, #0]
+
+    BR LR
+     
+percolate_down:
+     
+
+    ADD X9, X2, XZR   
+     
+    percolate_start:  
+     LSL X9, X9, #1         // child <<= 1 (child = 2 * child)
+     ADDI X9, X9, #1         // child += 1
+     
+     SUBS XZR, X9, X1        // Compare child and S
+     B.GE percolate_end      // If child >= S, exit loop         
+
+     ADD X10, X9, XZR       // child temp = child
+     ADDI X10, X10, #1       // child + 1
+     SUBS XZR, X10, X1       // child + 1 < S?                    
+    
+     B.GE skip_condition     // If child + 1 >= S, skip comparison
+    
+     ADD X10, X9, XZR // child temp = child
+     LSL X10, X10, #3        // child * 8 (addressing step)
+     ADD X10, X10, X0        // Get address of a[child]
+    
+     LDUR X11, [X10, #0]     // Load a[child] into X11
+     ADDI X10, X10, #8       // Move to a[child + 1]
+     LDUR X12, [X10, #0]     // Load a[child + 1] into X12
+
+     SUBS XZR, X11, X12      // Compare a[child] to a[child + 1]
+     B.GE skip_condition     // If a[child] >= a[child + 1], skip swap
+    
+    
+     ADDI X9, X9, #1         // Move to next child
+                                       
+    skip_condition:
+     
+     LSL X10, X9, #3         // Get the address of a[child]
+     LSL X11, X2, #3         // Get the address of a[i]          
+
+     ADD X10, X10, X0        // Finalize child address
+     ADD X11, X11, X0        // Finalize i address
+     LDUR X10, [X10, #0]     // Load a[child] into X10
+     LDUR X11, [X11, #0]     // Load a[i] into X11
+    
+     SUBS XZR, X11, X10      // Compare a[i] to a[child]
+     B.GE last_skip          // If a[i] >= a[child], no swap needed
+
+     ADD X27, X1, XZR        //save
+     ADD X26, X0, XZR
+     ADD X1, X2, XZR
+     ADD X2, X9, XZR
+    
+    
+     STUR LR, [SP, #16]
+     BL swap
+     LDUR LR, [SP, #16]
+    
+     ADD X1, X27, XZR
+     ADD X2, X26, XZR
+    
+    last_skip:
+     ADD X2, X9, XZR         // Set i = child
+    
+    
+     B percolate_start                  
+
+    percolate_end:
+    
+     BR LR                   // Return from subroutine
+
+heapify:
+    
+    ADD X2, XZR, XZR   //int i;
+    ADDI X2, X1, #1   // i = s + 1
+    LSR X2, X2, #1    // i = (s+1) / 2
+    
+  //Save LR
+    loop_start:                                            
+     SUBIS XZR, X2, #0
+     B.LE loop_end       // compare i to 0, once it reaches 0 break loop
+    
+     ADD X21, X2, XZR    // Save X2
+     SUBI X2, X2, #1
+     STUR LR, [SP, #8]
+    
+     BL percolate_down
+     LDUR LR, [SP, #8]     //load LR
+    
+     ADD X2, X21, XZR    // get X2 back
+     SUBI X2, X2, #1
+    
+     B loop_start
+     loop_end:
+     ADDI X2, XZR, #0    //make sure i = 0
+    
+     STUR LR, [SP, #8]
+    
+     BL percolate_down
+    
+     LDUR LR, [SP, #8]     //load LR    
+                                                               
+     BR LR
+    
+heapsort:
+
+        SUBI SP, SP, #24  //Save LR
+        STUR LR, [SP, #0]
+    
+        BL heapify
+    
+        ADD X9, XZR, XZR
+        heap_loop:   
+    
+        ADDI X9, X9, #1     // i = 1
+        SUBS XZR, X9, X1     //compare i and s
+        B.GE heap_loop_end
+        SUB X10, X1, X9      //X10 = s - i
+        ADD X21, X1, XZR
+        ADD X20, X2, XZR       // Save X2
+        ADD X19, X9, XZR       // Save X9
+        ADD X1, X10, XZR
+        ADD X2, XZR, XZR      // X2 = 0
+    
+        BL swap
+    
+        ADD X9, X25, XZR
+        ADD X21, X1, XZR    //SAVE X1
+        SUB X1, X1, X9       // X1 = (s - i)
+        ADD X2, X2, XZR         // X2 = X2
+        ADD X19, X9, XZR
+    
+        BL percolate_down
+    
+        ADD X9, X19, XZR                                       
+        ADD X1, X21, XZR  //load X1
+        B heap_loop
+
+        heap_loop_end:
+        LDUR LR, [SP, #0]
+        
+        BR LR
+end:
+    DUMP
+      
