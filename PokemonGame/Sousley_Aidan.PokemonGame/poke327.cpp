@@ -9,12 +9,23 @@
 #include <ctype.h>
 #include <sys/select.h>
 #include <unistd.h>
+#include <ncurses.h>
+#include <string>
+#include <vector>
+#include <limits>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
 #include "heap.h"
 
+std::string int_or_na(int val) {
+    return val == INT_MAX ? "N/A" : std::to_string(val);
+}
+
 #define malloc(size) ({          \
   void *_tmp;                    \
-  assert((_tmp = malloc(size))); \
+  assert((_tmp = (queue_node_t *) malloc(size))); \
   _tmp;                          \
 })
 
@@ -96,45 +107,51 @@ typedef enum __attribute__ ((__packed__)) character_type {
   char_explorer,
 } character_type_t;
 
-typedef struct character {
+class Character {
+public:
   character_type_t type;
   int x;
   int y;
   int next_turn;
   int direction;
-} character_t;
+  int defeated;
+};
 
-character_t *character_map[MAP_Y][MAP_X];
+class PC : public Character {
+};
 
-typedef struct pc {
-  pair_t pos;
-} pc_t;
+class NPC : public Character {
+};
 
-typedef struct map {
+class Map {
+public:
   terrain_type_t map[MAP_Y][MAP_X];
   uint8_t height[MAP_Y][MAP_X];
   int8_t n, s, e, w;
-} map_t;
+  Character *character_map[MAP_Y][MAP_X];
+  heap_t turn_heap;
+};
 
 typedef struct queue_node {
   int x, y;
   struct queue_node *next;
 } queue_node_t;
 
-typedef struct world {
-  map_t *world[WORLD_SIZE][WORLD_SIZE];
+class World {
+public:
+  Map *world[WORLD_SIZE][WORLD_SIZE];
   pair_t cur_idx;
-  map_t *cur_map;
+  Map *cur_map;
   /* Place distance maps in world, not map, since *
    * we only need one pair at any given time.     */
   int hiker_dist[MAP_Y][MAP_X];
   int rival_dist[MAP_Y][MAP_X];
-  pc_t pc;
-} world_t;
+  PC pc;
+};
 
 /* Even unallocated, a WORLD_SIZE x WORLD_SIZE array of pointers is a very *
  * large thing to put on the stack.  To avoid that, world is a global.     */
-world_t world;
+World world;
 
 /* Just to make the following table fit in 80 columns */
 #define IM DIJKSTRA_PATH_MAX
@@ -156,7 +173,7 @@ static int32_t edge_penalty(int8_t x, int8_t y)
   return (x == 1 || y == 1 || x == MAP_X - 2 || y == MAP_Y - 2) ? 2 : 1;
 }
 
-static void dijkstra_path(map_t *m, pair_t from, pair_t to)
+static void dijkstra_path(Map *m, pair_t from, pair_t to)
 {
   static path_t path[MAP_Y][MAP_X], *p;
   static uint32_t initialized = 0;
@@ -189,7 +206,7 @@ static void dijkstra_path(map_t *m, pair_t from, pair_t to)
     }
   }
 
-  while ((p = heap_remove_min(&h))) {
+  while ((p = (path_t *) heap_remove_min(&h))) {
     p->hn = NULL;
 
     if ((p->pos[dim_y] == to[dim_y]) && p->pos[dim_x] == to[dim_x]) {
@@ -257,7 +274,7 @@ static void dijkstra_path(map_t *m, pair_t from, pair_t to)
   }
 }
 
-static int build_paths(map_t *m)
+static int build_paths(Map *m)
 {
   pair_t from, to;
 
@@ -356,7 +373,7 @@ static int gaussian[5][5] = {
   {  1,  4,  7,  4,  1 }
 };
 
-static int smooth_height(map_t *m)
+static int smooth_height(Map *m)
 {
   int32_t i, x, y;
   int32_t s, t, p, q;
@@ -374,9 +391,9 @@ static int smooth_height(map_t *m)
     } while (height[y][x]);
     height[y][x] = i;
     if (i == 1) {
-      head = tail = malloc(sizeof (*tail));
+      head = tail = (queue_node_t *) malloc(sizeof (*tail));
     } else {
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
     }
     tail->next = NULL;
@@ -399,7 +416,7 @@ static int smooth_height(map_t *m)
 
     if (x - 1 >= 0 && y - 1 >= 0 && !height[y - 1][x - 1]) {
       height[y - 1][x - 1] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x - 1;
@@ -407,7 +424,7 @@ static int smooth_height(map_t *m)
     }
     if (x - 1 >= 0 && !height[y][x - 1]) {
       height[y][x - 1] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x - 1;
@@ -415,7 +432,7 @@ static int smooth_height(map_t *m)
     }
     if (x - 1 >= 0 && y + 1 < MAP_Y && !height[y + 1][x - 1]) {
       height[y + 1][x - 1] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x - 1;
@@ -423,7 +440,7 @@ static int smooth_height(map_t *m)
     }
     if (y - 1 >= 0 && !height[y - 1][x]) {
       height[y - 1][x] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x;
@@ -431,7 +448,7 @@ static int smooth_height(map_t *m)
     }
     if (y + 1 < MAP_Y && !height[y + 1][x]) {
       height[y + 1][x] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x;
@@ -439,7 +456,7 @@ static int smooth_height(map_t *m)
     }
     if (x + 1 < MAP_X && y - 1 >= 0 && !height[y - 1][x + 1]) {
       height[y - 1][x + 1] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x + 1;
@@ -447,7 +464,7 @@ static int smooth_height(map_t *m)
     }
     if (x + 1 < MAP_X && !height[y][x + 1]) {
       height[y][x + 1] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x + 1;
@@ -455,7 +472,7 @@ static int smooth_height(map_t *m)
     }
     if (x + 1 < MAP_X && y + 1 < MAP_Y && !height[y + 1][x + 1]) {
       height[y + 1][x + 1] = i;
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
       tail->next = NULL;
       tail->x = x + 1;
@@ -513,7 +530,7 @@ static int smooth_height(map_t *m)
   return 0;
 }
 
-static void find_building_location(map_t *m, pair_t p)
+static void find_building_location(Map *m, pair_t p)
 {
   do {
     p[dim_x] = rand() % (MAP_X - 3) + 1;
@@ -544,7 +561,7 @@ static void find_building_location(map_t *m, pair_t p)
   } while (1);
 }
 
-static int place_pokemart(map_t *m)
+static int place_pokemart(Map *m)
 {
   pair_t p;
 
@@ -558,7 +575,7 @@ static int place_pokemart(map_t *m)
   return 0;
 }
 
-static int place_center(map_t *m)
+static int place_center(Map *m)
 {  pair_t p;
 
   find_building_location(m, p);
@@ -573,7 +590,7 @@ static int place_center(map_t *m)
 
 /* Chooses tree or boulder for border cell.  Choice is biased by dominance *
  * of neighboring cells.                                                   */
-static terrain_type_t border_type(map_t *m, int32_t x, int32_t y)
+static terrain_type_t border_type(Map *m, int32_t x, int32_t y)
 {
   int32_t p, q;
   int32_t r, t;
@@ -617,7 +634,7 @@ static terrain_type_t border_type(map_t *m, int32_t x, int32_t y)
   }
 }
 
-static int map_terrain(map_t *m, int8_t n, int8_t s, int8_t e, int8_t w)
+static int Maperrain(Map *m, int8_t n, int8_t s, int8_t e, int8_t w)
 {
   int32_t i, x, y;
   queue_node_t *head, *tail, *tmp;
@@ -654,9 +671,9 @@ static int map_terrain(map_t *m, int8_t n, int8_t s, int8_t e, int8_t w)
     }
     m->map[y][x] = type;
     if (i == 0) {
-      head = tail = malloc(sizeof (*tail));
+      head = tail = (queue_node_t *) malloc(sizeof (*tail));
     } else {
-      tail->next = malloc(sizeof (*tail));
+      tail->next = (queue_node_t *) malloc(sizeof (*tail));
       tail = tail->next;
     }
     tail->next = NULL;
@@ -679,16 +696,16 @@ static int map_terrain(map_t *m, int8_t n, int8_t s, int8_t e, int8_t w)
     
     if (x - 1 >= 0 && !m->map[y][x - 1]) {
       if ((rand() % 100) < 80) {
-        m->map[y][x - 1] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y][x - 1] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x - 1;
         tail->y = y;
       } else if (!added_current) {
         added_current = 1;
-        m->map[y][x] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y][x] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x;
@@ -698,16 +715,16 @@ static int map_terrain(map_t *m, int8_t n, int8_t s, int8_t e, int8_t w)
 
     if (y - 1 >= 0 && !m->map[y - 1][x]) {
       if ((rand() % 100) < 20) {
-        m->map[y - 1][x] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y - 1][x] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x;
         tail->y = y - 1;
       } else if (!added_current) {
         added_current = 1;
-        m->map[y][x] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y][x] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x;
@@ -717,16 +734,16 @@ static int map_terrain(map_t *m, int8_t n, int8_t s, int8_t e, int8_t w)
 
     if (y + 1 < MAP_Y && !m->map[y + 1][x]) {
       if ((rand() % 100) < 20) {
-        m->map[y + 1][x] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y + 1][x] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x;
         tail->y = y + 1;
       } else if (!added_current) {
         added_current = 1;
-        m->map[y][x] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y][x] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x;
@@ -736,16 +753,16 @@ static int map_terrain(map_t *m, int8_t n, int8_t s, int8_t e, int8_t w)
 
     if (x + 1 < MAP_X && !m->map[y][x + 1]) {
       if ((rand() % 100) < 80) {
-        m->map[y][x + 1] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y][x + 1] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x + 1;
         tail->y = y;
       } else if (!added_current) {
         added_current = 1;
-        m->map[y][x] = i;
-        tail->next = malloc(sizeof (*tail));
+        m->map[y][x] = (terrain_type_t) i;
+        tail->next = (queue_node_t *) malloc(sizeof (*tail));
         tail = tail->next;
         tail->next = NULL;
         tail->x = x;
@@ -800,7 +817,7 @@ static int map_terrain(map_t *m, int8_t n, int8_t s, int8_t e, int8_t w)
   return 0;
 }
 
-static int place_boulders(map_t *m)
+static int place_boulders(Map *m)
 {
   int i;
   int x, y;
@@ -818,7 +835,7 @@ static int place_boulders(map_t *m)
   return 0;
 }
 
-static int place_trees(map_t *m)
+static int place_trees(Map *m)
 {
   int i;
   int x, y;
@@ -837,6 +854,20 @@ static int place_trees(map_t *m)
   return 0;
 }
 
+int compare_turns(const void *a, const void *b)
+{
+  Character *c1 = (Character *) a;
+  Character *c2 = (Character *) b;
+
+  if (c1->next_turn < c2->next_turn) {
+    return -1;
+  } else if (c1->next_turn > c2->next_turn) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
 // New map expects cur_idx to refer to the index to be generated.  If that
 // map has already been generated then the only thing this does is set
 // cur_map.
@@ -849,10 +880,11 @@ static int new_map()
     world.cur_map = world.world[world.cur_idx[dim_y]][world.cur_idx[dim_x]];
     return 0;
   }
-
   world.cur_map                                             =
     world.world[world.cur_idx[dim_y]][world.cur_idx[dim_x]] =
-    malloc(sizeof (*world.cur_map));
+    new Map();
+
+  heap_init(&world.cur_map->turn_heap, compare_turns, NULL);
 
   smooth_height(world.cur_map);
   
@@ -885,7 +917,7 @@ static int new_map()
     e = 1 + rand() % (MAP_Y - 2);
   }
   
-  map_terrain(world.cur_map, n, s, e, w);
+  Maperrain(world.cur_map, n, s, e, w);
      
   place_boulders(world.cur_map);
   place_trees(world.cur_map);
@@ -901,7 +933,7 @@ static int new_map()
     place_center(world.cur_map);
   }
 
-  return 0;
+  return 1;
 }
 
 static void print_map()
@@ -909,84 +941,140 @@ static void print_map()
   int x, y;
   int default_reached = 0;
 
-  printf("\n\n\n");
-
   for (y = 0; y < MAP_Y; y++) {
     for (x = 0; x < MAP_X; x++) {
-      if (world.pc.pos[dim_y] == y &&
-          world.pc.pos[dim_x] == x) {
-        putchar('@');
+      char to_draw = ERROR_SYMBOL;
+      if (world.pc.y == y &&
+          world.pc.x == x) {
+        attron(COLOR_PAIR(5));
+        to_draw = '@';
+        mvaddch(y+1, x, to_draw);
+        attroff(COLOR_PAIR(5));
       }
-      else if(character_map[y][x]){
-        switch (character_map[y][x]->type) {
+      else if(world.cur_map->character_map[y][x]){
+        switch (world.cur_map->character_map[y][x]->type) {
           case char_hiker:
-            putchar(HIKER_SYMBOL);
+            to_draw = HIKER_SYMBOL;
+            attron(COLOR_PAIR(5));
+            mvaddch(y+1, x, to_draw);
+            attroff(COLOR_PAIR(5));
             break;
           case char_rival:
-            putchar(RIVAL_SYMBOL);
+            to_draw = RIVAL_SYMBOL;
+            attron(COLOR_PAIR(5));
+            mvaddch(y+1, x, to_draw);
+            attroff(COLOR_PAIR(5));
             break;
           case char_pacer:
-            putchar(PACER_SYMBOL);
+            to_draw = PACER_SYMBOL;
+            attron(COLOR_PAIR(5));
+            mvaddch(y+1, x, to_draw);
+            attroff(COLOR_PAIR(5));
             break;
           case char_wanderer:
-            putchar(WANDERER_SYMBOL);
+            to_draw = WANDERER_SYMBOL;
+            attron(COLOR_PAIR(5));
+            mvaddch(y+1, x, to_draw);
+            attroff(COLOR_PAIR(5));
             break;
           case char_sentry:
-            putchar(SENTRY_SYMBOL);
+            to_draw = SENTRY_SYMBOL;
+            attron(COLOR_PAIR(5));
+            mvaddch(y+1, x, to_draw);
+            attroff(COLOR_PAIR(5));
             break;
           case char_explorer:
-            putchar(EXPLORER_SYMBOL);
+            to_draw = EXPLORER_SYMBOL;
+            attron(COLOR_PAIR(5));
+            mvaddch(y+1, x, to_draw);
+            attroff(COLOR_PAIR(5));
             break;
         }
       }
       else {
         switch (world.cur_map->map[y][x]) {
         case ter_boulder:
-          putchar(BOULDER_SYMBOL);
+          to_draw = BOULDER_SYMBOL;
+          attron(COLOR_PAIR(4));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(4));
           break;
         case ter_mountain:
-          putchar(MOUNTAIN_SYMBOL);
+          to_draw = MOUNTAIN_SYMBOL;
+          attron(COLOR_PAIR(4));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(4));
           break;
         case ter_tree:
-          putchar(TREE_SYMBOL);
+          to_draw = TREE_SYMBOL;
+          attron(COLOR_PAIR(6));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(6));
           break;
         case ter_forest:
-          putchar(FOREST_SYMBOL);
+          to_draw = FOREST_SYMBOL;
+          attron(COLOR_PAIR(6));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(6));
           break;
         case ter_path:
-          putchar(PATH_SYMBOL);
+          to_draw = PATH_SYMBOL;
+          attron(COLOR_PAIR(1));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(1));
           break;
         case ter_gate:
-          putchar(GATE_SYMBOL);
+          to_draw = GATE_SYMBOL;
+          attron(COLOR_PAIR(1));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(1));
           break;
         case ter_mart:
-          putchar(POKEMART_SYMBOL);
+          to_draw = POKEMART_SYMBOL;
+          attron(COLOR_PAIR(3));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(3));
           break;
         case ter_center:
-          putchar(POKEMON_CENTER_SYMBOL);
+          to_draw = POKEMON_CENTER_SYMBOL;
+          attron(COLOR_PAIR(3));
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(3));
           break;
         case ter_grass:
-          putchar(TALL_GRASS_SYMBOL);
+          to_draw = TALL_GRASS_SYMBOL;
+            attron(COLOR_PAIR(2));
+            mvaddch(y+1, x, to_draw);
+            attroff(COLOR_PAIR(2));
+            break;
+          mvaddch(y+1, x, to_draw);
           break;
         case ter_clearing:
-          putchar(SHORT_GRASS_SYMBOL);
+          attron(COLOR_PAIR(2));
+          to_draw = SHORT_GRASS_SYMBOL;
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(2));
           break;
         case ter_water:
-          putchar(WATER_SYMBOL);
+          attron(COLOR_PAIR(7));
+          to_draw = WATER_SYMBOL;
+          mvaddch(y+1, x, to_draw);
+          attroff(COLOR_PAIR(7));
           break;
         default:
-          putchar(ERROR_SYMBOL);
+          to_draw = ERROR_SYMBOL;
           default_reached = 1;
           break;
         }
       }
     }
-    putchar('\n');
   }
 
   if (default_reached) {
-    fprintf(stderr, "Default reached in %s\n", __FUNCTION__);
+    mvprintw(0, 0, "Default reached in %s\n", __FUNCTION__);
   }
+
+  refresh();
 }
 
 // The world is global because of its size, so init_world is parameterless
@@ -1026,7 +1114,7 @@ static int32_t rival_cmp(const void *key, const void *with) {
                           [((path_t *) with)->pos[dim_x]]);
 }
 
-void pathfind(map_t *m)
+void pathfind(Map *m)
 {
   heap_t h;
   uint32_t x, y;
@@ -1048,8 +1136,8 @@ void pathfind(map_t *m)
       world.hiker_dist[y][x] = world.rival_dist[y][x] = DIJKSTRA_PATH_MAX;
     }
   }
-  world.hiker_dist[world.pc.pos[dim_y]][world.pc.pos[dim_x]] = 
-    world.rival_dist[world.pc.pos[dim_y]][world.pc.pos[dim_x]] = 0;
+  world.hiker_dist[world.pc.y][world.pc.x] = 
+    world.rival_dist[world.pc.y][world.pc.x] = 0;
 
   heap_init(&h, hiker_cmp, NULL);
 
@@ -1063,7 +1151,7 @@ void pathfind(map_t *m)
     }
   }
 
-  while ((c = heap_remove_min(&h))) {
+  while ((c = (path_t *) heap_remove_min(&h))) {
     c->hn = NULL;
     if ((p[c->pos[dim_y] - 1][c->pos[dim_x] - 1].hn) &&
         (world.hiker_dist[c->pos[dim_y] - 1][c->pos[dim_x] - 1] >
@@ -1160,7 +1248,7 @@ void pathfind(map_t *m)
     }
   }
 
-  while ((c = heap_remove_min(&h))) {
+  while ((c = (path_t *) heap_remove_min(&h))) {
     c->hn = NULL;
     if ((p[c->pos[dim_y] - 1][c->pos[dim_x] - 1].hn) &&
         (world.rival_dist[c->pos[dim_y] - 1][c->pos[dim_x] - 1] >
@@ -1255,8 +1343,8 @@ void init_pc()
     y = rand() % (MAP_Y - 2) + 1;
   } while (world.cur_map->map[y][x] != ter_path);
 
-  world.pc.pos[dim_x] = x;
-  world.pc.pos[dim_y] = y;
+  world.pc.x = x;
+  world.pc.y = y;
 }
 
 void print_hiker_dist()
@@ -1292,7 +1380,7 @@ void print_rival_dist()
   }
 }
 
-void spawn_trainer(character_t *c)
+void spawn_trainer(Character *c)
 {
   int x,y;
   do {x = rand() % (MAP_X - 2) + 1;
@@ -1302,22 +1390,20 @@ void spawn_trainer(character_t *c)
            (world.cur_map->map[y][x] != ter_grass) &&
            (world.cur_map->map[y][x] != ter_mart) &&
            (world.cur_map->map[y][x] != ter_center)) ||
-          (character_map[y][x] != NULL));
+          (world.cur_map->character_map[y][x] != NULL));
 
 
-  character_map[y][x] = c;
+  world.cur_map->character_map[y][x] = c;
   c->x = x;
   c->y = y;
   c->next_turn = 0;
   c->direction = 0;
+  c->defeated = 0;
 
 }
 
-character_t *spawn_random_trainer(){
-  character_t *c = malloc(sizeof(*c));
-  if(!c){
-    return NULL;
-  }
+Character *spawn_random_trainer(){
+  Character *c = new NPC();
     int random = rand() % 6;
     if (random == 0){
       c->type = char_hiker;
@@ -1336,7 +1422,7 @@ character_t *spawn_random_trainer(){
     return c;
 }
 
-void move_hiker(character_t *c){
+void move_hiker(Character *c){
   int best_x = c->x;
   int best_y = c->y;
   int min = INT_MAX;
@@ -1360,16 +1446,16 @@ void move_hiker(character_t *c){
     }
   }
 
-  character_map[c->y][c->x] = NULL;
+  world.cur_map->character_map[c->y][c->x] = NULL;
   c->x = best_x;
   c->y = best_y;
-  character_map[c->y][c->x] = c;
+  world.cur_map->character_map[c->y][c->x] = c;
   c->next_turn = world_time + move_cost[1][world.cur_map->map[c->y][c->x]];
 
 }
 
 
-void move_rival(character_t *c){
+void move_rival(Character *c){
   int best_x = c->x;
   int best_y = c->y;
   int min = INT_MAX;
@@ -1393,15 +1479,15 @@ void move_rival(character_t *c){
     }
   }
 
-  character_map[c->y][c->x] = NULL;
+  world.cur_map->character_map[c->y][c->x] = NULL;
   c->x = best_x;
   c->y = best_y;
-  character_map[c->y][c->x] = c;
+  world.cur_map->character_map[c->y][c->x] = c;
   c->next_turn = world_time + move_cost[2][world.cur_map->map[c->y][c->x]];
 
 }
 
-void move_pacer(character_t *c){
+void move_pacer(Character *c){
   int random = rand() % 4;
   if (c->direction == 0){
     if (random == 0){
@@ -1438,19 +1524,19 @@ void move_pacer(character_t *c){
 
   if (ny < 0 || ny >= MAP_Y || nx < 0 || nx >= MAP_X ||
       move_cost[2][world.cur_map->map[ny][nx]] == DIJKSTRA_PATH_MAX ||
-      character_map[ny][nx] != NULL){
+      world.cur_map->character_map[ny][nx] != NULL){
     c->direction *= -1;
   }
   else{
-    character_map[c->y][c->x] = NULL;
+    world.cur_map->character_map[c->y][c->x] = NULL;
     c->x = nx;
     c->y = ny;
-    character_map[c->y][c->x] = c;
+    world.cur_map->character_map[c->y][c->x] = c;
   }
   c->next_turn = world_time + move_cost[2][world.cur_map->map[c->y][c->x]];
 }
 
-void move_wanderer(character_t *c){
+void move_wanderer(Character *c){
   terrain_type_t current_terrain = world.cur_map->map[c->y][c->x];
   int dx = 0, dy = 0;
   int ny, nx;
@@ -1500,17 +1586,17 @@ void move_wanderer(character_t *c){
     }
   } while ((ny < 0 || ny >= MAP_Y || nx < 0 || nx >= MAP_X ||
       move_cost[2][world.cur_map->map[ny][nx]] == DIJKSTRA_PATH_MAX ||
-      character_map[ny][nx] != NULL || world.cur_map->map[ny][nx] != current_terrain));
+      world.cur_map->character_map[ny][nx] != NULL || world.cur_map->map[ny][nx] != current_terrain));
   
-  character_map[c->y][c->x] = NULL;
+  world.cur_map->character_map[c->y][c->x] = NULL;
   c->x = nx;
   c->y = ny;
-  character_map[c->y][c->x] = c;
+  world.cur_map->character_map[c->y][c->x] = c;
   
    c->next_turn = world_time + move_cost[2][world.cur_map->map[c->y][c->x]];
 }
 
-void move_explorer(character_t *c){
+void move_explorer(Character *c){
   int dx = 0, dy = 0;
   int ny, nx;
   do{
@@ -1559,20 +1645,111 @@ void move_explorer(character_t *c){
     }
   } while ((ny < 0 || ny >= MAP_Y || nx < 0 || nx >= MAP_X ||
       move_cost[2][world.cur_map->map[ny][nx]] == DIJKSTRA_PATH_MAX ||
-      character_map[ny][nx] != NULL));
+      world.cur_map->character_map[ny][nx] != NULL));
   
-  character_map[c->y][c->x] = NULL;
+  world.cur_map->character_map[c->y][c->x] = NULL;
   c->x = nx;
   c->y = ny;
-  character_map[c->y][c->x] = c;
+  world.cur_map->character_map[c->y][c->x] = c;
 
    c->next_turn = world_time + move_cost[2][world.cur_map->map[c->y][c->x]];
 }
 
+void init_npcs(heap_t *turn_heap){
+  while(turn_heap->size > 0){
+    heap_remove_min(turn_heap);
+  }
+
+  if (num_trainers >= 2){
+    Character *h = new NPC();
+    h->type = char_hiker;
+    h->defeated = 0;
+    spawn_trainer(h);
+    heap_insert(turn_heap, h);
+
+    Character *r = new NPC();
+    r->type = char_rival;
+    r->defeated = 0;
+    spawn_trainer(r);
+    heap_insert(turn_heap, r);
+
+    for (int i = 0; i < num_trainers - 2; i++){
+      Character *temp = spawn_random_trainer();
+      heap_insert(turn_heap, temp);
+    }
+  }
+  else{
+    Character *temp = spawn_random_trainer();
+    heap_insert(turn_heap, temp);
+  }
+
+}
+
+int move_pc(int dx, int dy, heap_t *turn_heap){
+  int nx = world.pc.x + dx;
+  int ny = world.pc.y + dy;
+
+  if (ny < 0 || ny >= MAP_Y || nx < 0 || nx >= MAP_X){
+    int past_x = world.pc.x;
+    int past_y = world.pc.y;
+    if (dy == -1 && world.pc.y == 0){
+          world.cur_idx[dim_y]--;
+          if (new_map() == 1) {
+            init_npcs(&world.cur_map->turn_heap);
+          }
+          mvprintw(0, 0, "Loading new map...");
+          pathfind(world.cur_map);
+          world.pc.x = past_x;
+          world.pc.y = MAP_Y - 1;
+    }
+    else if (dy == 1 && world.pc.y == MAP_Y - 1){
+          world.cur_idx[dim_y]++;
+          if (new_map() == 1) {
+            init_npcs(&world.cur_map->turn_heap);
+          }
+          pathfind(world.cur_map);
+          world.pc.x = past_x;
+          world.pc.y = 0;
+          
+    }
+    else if (dx == -1 && world.pc.x == 0){
+          world.cur_idx[dim_x]--;
+          if (new_map() == 1) {
+            init_npcs(&world.cur_map->turn_heap);
+          }
+          pathfind(world.cur_map);
+          world.pc.x = MAP_X - 1;
+          world.pc.y = past_y;
+          
+    }
+    else if (dx == 1 && world.pc.x == MAP_X - 1){
+          world.cur_idx[dim_x]++;
+          if (new_map() == 1) {
+            init_npcs(&world.cur_map->turn_heap);
+          }
+          pathfind(world.cur_map);
+          world.pc.x = 0;
+          world.pc.y = past_y;
+          
+    }
+    return 1;
+  }
+  else if (move_cost[0][world.cur_map->map[ny][nx]] == DIJKSTRA_PATH_MAX ||
+      world.cur_map->character_map[ny][nx] != NULL){
+      return 0;
+  }
+  world.pc.x = nx;
+  world.pc.y = ny;
+  return 1;
+}
+
 
 int game_turn(heap_t *turn_heap){
-  character_t *c = heap_remove_min(turn_heap);
+  Character *c = (Character *) heap_remove_min(turn_heap);
   world_time = c->next_turn;
+  if (c->defeated){
+    return 1;
+  }
   switch (c->type){
     case char_hiker:
       move_hiker(c);
@@ -1588,7 +1765,6 @@ int game_turn(heap_t *turn_heap){
       break;
     case char_sentry:
       c->next_turn = world_time + world.rival_dist[c->y][c->x];
-      printf("Sentry at (%d, %d) next turn at %d\n", c->x, c->y, c->next_turn);
       break;
     case char_explorer:
       move_explorer(c);
@@ -1613,62 +1789,702 @@ int get_input_nonblocking(char *c)
   return 0;  // no input
 }
 
-int compare_turns(const void *a, const void *b)
-{
-  character_t *c1 = (character_t *) a;
-  character_t *c2 = (character_t *) b;
 
-  if (c1->next_turn < c2->next_turn) {
-    return -1;
-  } else if (c1->next_turn > c2->next_turn) {
-    return 1;
-  } else {
-    return 0;
-  }
-}
+int print_trainers(){
+  
+  WINDOW *pad = newpad(200, 80);
 
-int init_npcs(heap_t *turn_heap){
-
-  while(turn_heap->size > 0){
-    heap_remove_min(turn_heap);
-  }
-
-  if (num_trainers >= 2){
-    character_t *h = malloc(sizeof(*h));
-    h->type = char_hiker;
-    spawn_trainer(h);
-    heap_insert(turn_heap, h);
-
-    character_t *r = malloc(sizeof(*r));
-    r->type = char_rival;
-    spawn_trainer(r);
-    heap_insert(turn_heap, r);
-
-    for (int i = 0; i < num_trainers - 2; i++){
-      character_t *temp = spawn_random_trainer();
-      heap_insert(turn_heap, temp);
+  scrollok(pad, TRUE);
+  keypad(pad, TRUE);
+  int line = 0;
+  wprintw(pad, "Trainers in the world:\n");
+  line++;
+  for (int y = 0; y < MAP_Y; y++){
+    for (int x = 0; x < MAP_X; x++){
+      if ((world.cur_map->character_map[y][x] != NULL) && (x != world.pc.x && y != world.pc.y)){
+        int dx = x - world.pc.x;
+        int dy = y - world.pc.y;
+        const char *ns = (dy < 0) ? "North" : "South";
+        const char *ew = (dx < 0) ? "West" : "East";
+        Character *c = world.cur_map->character_map[y][x];
+        char symbol;
+        if (c->type == char_hiker){
+          symbol = 'h';
+        } else if (c->type == char_rival){
+          symbol = 'r';
+        } else if (c->type == char_pacer){
+          symbol = 'p';
+        } else if (c->type == char_wanderer){
+          symbol = 'w';
+        } else if (c->type == char_sentry){
+          symbol = 's';
+        } else {
+          symbol = 'e';
+        }
+        wprintw(pad, "Trainer (%c) at (%d,%d) is %d steps %s and %d steps %s of you.\n",
+                 symbol, x, y, abs(dx), ew, abs(dy), ns);
+        line++;
+      }
     }
   }
-  else{
-    character_t *temp = spawn_random_trainer();
-    heap_insert(turn_heap, temp);
-  }
+  wprintw(pad, "Press esc to return to the game.\n");
+  int pad_pos = 0;
+  int quit = 0;
 
+  prefresh(pad, pad_pos, 0, 1, 0, 20, 79);
+
+  while (!quit){
+  int key = getch();
+  switch (key){
+    case 27:
+      quit = 1;
+      break;
+    case KEY_UP:
+      if (pad_pos > 0){
+        pad_pos--;
+      }
+      break;
+    case KEY_DOWN:
+      if (pad_pos + 20 < line){
+        pad_pos++;
+      }
+      break;
+  }
+  prefresh(pad, pad_pos, 0, 1, 0, 20, 79);
+}
+  delwin(pad);
+  clear();
+  refresh();
   return 0;
+
+}
+
+Character *check_npc_around_pc(){
+  for (int dy = -1; dy <= 1; dy++){
+    for (int dx = -1; dx <= 1; dx++){
+       int nx = world.pc.x + dx;
+       int ny = world.pc.y + dy;
+
+      if (ny < 0 || ny >= MAP_Y || nx < 0 || nx >= MAP_X)
+    continue;
+
+      if (world.cur_map->character_map[ny][nx]){
+        refresh();
+        return world.cur_map->character_map[ny][nx];
+      }
+    }
+  }
+  return NULL;
+}
+
+int init_battle(Character *t){
+  mvprintw(0, 0, "A battle has started!\n");
+  refresh();
+  mvprintw(0, 0, "You won the battle!\n");
+  refresh();
+  t->defeated = 1;
+  return 1;
+}
+
+class CSVData{
+public:
+  virtual ~CSVData() = default;
+
+  virtual void parseLine(const std::string& line) = 0;
+
+  template <typename T>
+  static std::vector<T> parseCSV(const char* filename) {
+    std::vector<T> data;
+    std::ifstream file(filename);
+    std::string line;
+
+    if (!file.is_open()) {
+      std::cerr << "Could not open file: " << filename << std::endl;
+      return data;
+    }
+    std::getline(file, line); // Skip header
+
+    while (std::getline(file, line)) {
+      T item;
+      item.parseLine(line);
+      data.push_back(item);
+    }
+    return data;
+  }
+};
+
+class Pokemon  {
+public:
+    int id;
+    char identifier[50];
+    int height;
+    int weight;
+    int base_experience;
+    int order;
+    int is_default;
+
+    Pokemon(int id, const char *identifier, int height, int weight, int base_experience, int order, int is_default) {
+        this->id = id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->height = height;
+        this->weight = weight;
+        this->base_experience = base_experience;
+        this->order = order;
+        this->is_default = is_default;
+    }
+
+    Pokemon() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        height = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        weight = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        base_experience = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        order = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_default = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class Move  {
+public:
+    int id;
+    char identifier[50];
+    int generation_id;
+    int type_id;
+    int power;
+    int pp;
+    int accuracy;
+    int priority;
+    int target_id;
+    int damage_class_id;
+    int effect_id;
+    int effect_chance;
+    int contest_type_id;
+    int contest_effect_id;
+    int super_contest_effect_id;
+
+    Move(int id, const char *identifier, int generation_id, int type_id, int power, int pp, int accuracy, int priority, int target_id, int damage_class_id,
+         int effect_id, int effect_chance, int contest_type_id, int contest_effect_id, int super_contest_effect_id) {
+        this->id = id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->generation_id = generation_id;
+        this->type_id = type_id;
+        this->power = power;
+        this->pp = pp;
+        this->accuracy = accuracy;
+        this->priority = priority;
+        this->target_id = target_id;
+        this->damage_class_id = damage_class_id;
+        this->effect_id = effect_id;
+        this->effect_chance = effect_chance;
+        this->contest_type_id = contest_type_id;
+        this->contest_effect_id = contest_effect_id;
+        this->super_contest_effect_id = super_contest_effect_id;
+    }
+
+    Move() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        generation_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        power = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        pp = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        accuracy = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        priority = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        target_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        damage_class_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        effect_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        effect_chance = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        contest_type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        contest_effect_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        super_contest_effect_id = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class PokemonMove  {
+  public:
+    int pokemon_id;
+    int version_group_id;
+    int move_id;
+    int pokemon_move_method_id;
+    int level;
+    int order;
+
+    PokemonMove(int pokemon_id, int version_group_id, int move_id, int pokemon_move_method_id, int level, int order) {
+        this->pokemon_id = pokemon_id;
+        this->version_group_id = version_group_id;
+        this->move_id = move_id;
+        this->pokemon_move_method_id = pokemon_move_method_id;
+        this->level = level;
+        this->order = order;
+    }
+
+    PokemonMove() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        version_group_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        move_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        pokemon_move_method_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        level = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        order = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class PokemonSpecies  {
+  public:
+    int id;
+    char identifier[50];
+    int generation_id;
+    int evolves_from_species_id;
+    int evolution_chain_id;
+    int color_id;
+    int shape_id;
+    int habitat_id;
+    int gender_rate;
+    int capture_rate;
+    int base_happiness;
+    int is_baby;
+    int hatch_counter;
+    int has_gender_differences;
+    int growth_rate_id;
+    int forms_switchable;
+    int is_legendary;
+    int is_mythical;
+    int order;
+    int conquest_order;
+
+    PokemonSpecies(int id, const char *identifier, int generation_id, int evolves_from_species_id, int evolution_chain_id, int color_id,
+                   int shape_id, int habitat_id, int gender_rate, int capture_rate, int base_happiness, int is_baby, int hatch_counter,
+                   int has_gender_differences, int growth_rate_id, int forms_switchable, int is_legendary, int is_mythical, int order, int conquest_order) {
+        this->id = id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->generation_id = generation_id;
+        this->evolves_from_species_id = evolves_from_species_id;
+        this->evolution_chain_id = evolution_chain_id;
+        this->color_id = color_id;
+        this->shape_id = shape_id;
+        this->habitat_id = habitat_id;
+        this->gender_rate = gender_rate;
+        this->capture_rate = capture_rate;
+        this->base_happiness = base_happiness;
+        this->is_baby = is_baby;
+        this->hatch_counter = hatch_counter;
+        this->has_gender_differences = has_gender_differences;
+        this->growth_rate_id = growth_rate_id;
+        this->forms_switchable = forms_switchable;
+        this->is_legendary = is_legendary;
+        this->is_mythical = is_mythical;
+        this->order = order;
+        this->conquest_order = conquest_order;
+    }
+
+    PokemonSpecies() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        generation_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        evolves_from_species_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        evolution_chain_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        color_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        shape_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        habitat_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        gender_rate = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        capture_rate = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        base_happiness = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_baby = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        hatch_counter = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        has_gender_differences = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        growth_rate_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        forms_switchable = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_legendary = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_mythical = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        order = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        conquest_order = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class Experience  {
+  public:
+    int growth_rate_id;
+    int level;
+    int experience;
+
+    Experience(int growth_rate_id, int level, int experience){
+        this->growth_rate_id = growth_rate_id;
+        this->level = level;
+        this->experience = experience;
+    }
+
+    Experience(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        growth_rate_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        level = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        experience = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class TypeName  {
+  public:
+    int type_id;
+    int local_language_id;
+    char name[50];
+
+    TypeName(int type_id, int local_language_id, const char *name){
+        this->type_id = type_id;
+        this->local_language_id = local_language_id;
+        strncpy(this->name, name, sizeof(this->name) - 1);
+        this->name[sizeof(this->name) - 1] = '\0';
+    }
+
+    TypeName(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        local_language_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(name, token.c_str(), sizeof(name) - 1);
+        name[sizeof(name) - 1] = '\0';
+    }
+};
+
+class PokemonStat  {
+  public:
+    int pokemon_id;
+    int stat_id;
+    int base_stat;
+    int effort;
+
+    PokemonStat(int pokemon_id, int stat_id, int base_stat, int effort){
+        this->pokemon_id = pokemon_id;
+        this->stat_id = stat_id;
+        this->base_stat = base_stat;
+        this->effort = effort;
+    }
+
+    PokemonStat(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        stat_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        base_stat = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        effort = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class Stats  {
+  public:
+    int id;
+    char identifier[50];
+    int is_battle_only;
+    int game_index;
+    int damage_class_id;
+
+    Stats(int id, int damage_class_id, const char *identifier, int is_battle_only, int game_index){
+        this->id = id;
+        this->damage_class_id = damage_class_id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->is_battle_only = is_battle_only;
+        this->game_index = game_index;
+    }
+
+    Stats(){};
+    
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        damage_class_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        is_battle_only = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        game_index = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class PokemonTypes {
+  public:
+    int pokemon_id;
+    int type_id;
+    int slot;
+
+    PokemonTypes(int pokemon_id, int type_id, int slot){
+        this->pokemon_id = pokemon_id;
+        this->type_id = type_id;
+        this->slot = slot;
+    }
+
+    PokemonTypes(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        slot = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+void parse_and_print_pokemon_data(const char *name) {
+    char path[512];
+    
+    snprintf(path, sizeof(path), "/share/cs327/pokedex/pokedex/data/csv/%s.csv", name);
+    FILE *file = fopen(path, "r");
+    if (!file) {
+        char *home = getenv("HOME");
+        snprintf(path, sizeof(path), "%s/.poke327/pokedex/pokedex/data/csv/%s.csv", home, name);
+        file = fopen(path, "r");
+    }
+    if (strcmp(name, "pokemon") == 0) {
+        std::vector<Pokemon> pokemon_data = CSVData::parseCSV<Pokemon>(path);
+        for (const auto& p : pokemon_data) {
+            printf("ID: %d, Identifier: %s, Height: %d, Weight: %d, Base Experience: %d, Order: %d, Is Default: %d\n",
+                   p.id, p.identifier, p.height, p.weight, p.base_experience, p.order, p.is_default);
+        }
+    } else if (strcmp(name, "moves") == 0) {
+        std::vector<Move> moves_data = CSVData::parseCSV<Move>(path);
+        for (const auto& m : moves_data) {
+            printf("ID: %d, Identifier: %s, Generation ID: %d, Type ID: %d, Power: %d, PP: %d, Accuracy: %d, Priority: %d\n",
+                   m.id, m.identifier, m.generation_id, m.type_id, m.power, m.pp, m.accuracy, m.priority);
+        }
+    } else if (strcmp(name, "pokemon_moves") == 0) {
+        std::vector<PokemonMove> pokemon_moves_data = CSVData::parseCSV<PokemonMove>(path);
+        for (const auto& pm : pokemon_moves_data) {
+            printf("Pokemon ID: %d, Version Group ID: %d, Move ID: %d, Pokemon Move Method ID: %d, Level: %d, Order: %d\n",
+                   pm.pokemon_id, pm.version_group_id, pm.move_id, pm.pokemon_move_method_id, pm.level, pm.order);
+        }
+    } else if (strcmp(name, "pokemon_species") == 0) {
+        std::vector<PokemonSpecies> pokemon_species_data = CSVData::parseCSV<PokemonSpecies>(path);
+        for (const auto& ps : pokemon_species_data) {
+            printf("ID: %d, Identifier: %s, Generation ID: %d\n", ps.id, ps.identifier, ps.generation_id);
+        }
+    } else if (strcmp(name, "experience") == 0) {
+        std::vector<Experience> experience_data = CSVData::parseCSV<Experience>(path);
+        for (const auto& e : experience_data) {
+            std::cout << "Growth Rate ID: " << int_or_na(e.growth_rate_id) << ", Level: " << int_or_na(e.level) << ", Experience: " << int_or_na(e.experience) << std::endl;
+        }
+    } else if (strcmp(name, "type_names") == 0){
+      std::vector<TypeName> type_names_data = CSVData::parseCSV<TypeName>(path);
+      for (const auto& tn : type_names_data) {
+          std::cout << "Type ID: " << int_or_na(tn.type_id) << ", Name: " << tn.name << std::endl;
+      }
+    } else if (strcmp(name, "pokemon_stats") == 0){
+      std::vector<PokemonStat> pokemon_stats_data = CSVData::parseCSV<PokemonStat>(path);
+      for (const auto& ps : pokemon_stats_data) {
+          std::cout << "Pokemon ID: " << int_or_na(ps.pokemon_id) << ", Stat ID: " << int_or_na(ps.stat_id) << ", Effort: " << int_or_na(ps.effort) << std::endl;
+      }
+    } else if (strcmp(name, "pokemon_types") == 0){
+      std::vector<PokemonTypes> pokemon_types_data = CSVData::parseCSV<PokemonTypes>(path);
+      for (const auto& pt : pokemon_types_data) {
+          std::cout << "Pokemon ID: " << int_or_na(pt.pokemon_id) << ", Type ID: " << int_or_na(pt.type_id) << ", Slot: " << int_or_na(pt.slot) << std::endl;
+      }
+    } else if (strcmp(name, "stats") == 0){
+      std::vector<Stats> stats_data = CSVData::parseCSV<Stats>(path);
+      for (const auto& s : stats_data) {
+          std::cout << "ID: " << int_or_na(s.id) << ", Identifier: " << s.identifier << ", Is Battle Only: " << int_or_na(s.is_battle_only) << ", Game Index: " << int_or_na(s.game_index) << std::endl;
+      }
+    } else {
+        fprintf(stderr, "Unknown data type: %s\n", name);
+    }
+
+
 }
 
 int main(int argc, char *argv[])
 {
+  int moved = 1;
+
+  if (argc == 2){
+    const char *accept[] = {"pokemon", "moves", "pokemon_moves", "pokemon_species", "experience",
+                       "type_names", "pokemon_stats", "stats", "pokemon_types"};
+
+    for (int i = 0; i < 9; i++){
+      if (strcmp(argv[1], accept[i]) == 0){
+        parse_and_print_pokemon_data(argv[1]);
+        return 0;
+      }
+    }
+}
+
+  initscr();
+  start_color();
+  init_pair(1, COLOR_RED, COLOR_BLACK);
+  init_pair(2, COLOR_GREEN, COLOR_BLACK);
+  init_pair(3, COLOR_YELLOW, COLOR_BLUE);
+  init_pair(4, COLOR_CYAN, COLOR_BLACK);
+  init_pair(5, COLOR_WHITE, COLOR_BLACK);
+  init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
+  init_pair(7, COLOR_BLUE, COLOR_BLACK);
+
+  noecho();
+  cbreak();
+  keypad(stdscr, TRUE);
+  curs_set(0);
   struct timeval tv;
   uint32_t seed;
-  char c;
-  int x, y;
 
   if (argc == 2) {
     errno = 0;
     seed = strtol(argv[1], NULL, 10);
     if (!isdigit(argv[1][0]) || errno) {
-      fprintf(stderr, "Invalid seed value on command line.\n");
+      mvprintw(0, 0, "Invalid seed value on command line.\n");
       return -1;
     }
   } else {
@@ -1677,15 +2493,24 @@ int main(int argc, char *argv[])
   }
 
 
-  printf("Using seed: %u\n", seed);
+  mvprintw(0, 0, "Using seed: %u\n", seed);
   srand(seed);
 
   init_world();
 
-  heap_t turn_heap;
-  heap_init(&turn_heap, compare_turns, NULL);
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--numtrainers") == 0) {
+        if (i + 1 < argc) {
+            num_trainers = atoi(argv[i + 1]);
+            i++; // skip the number
+        } else {
+            fprintf(stderr, "--numtrainers requires a value\n");
+            exit(1);
+        }
+    }
+}
 
-  init_npcs(&turn_heap);
+  init_npcs(&world.cur_map->turn_heap);
 
   init_pc();
   pathfind(world.cur_map);
@@ -1694,82 +2519,142 @@ int main(int argc, char *argv[])
 
   while (!quit) {
     print_map();  
-    printf("Current position is %d%cx%d%c (%d,%d).  "
-           "Enter command: ",
-           abs(world.cur_idx[dim_x] - (WORLD_SIZE / 2)),
-           world.cur_idx[dim_x] - (WORLD_SIZE / 2) >= 0 ? 'E' : 'W',
-           abs(world.cur_idx[dim_y] - (WORLD_SIZE / 2)),
-           world.cur_idx[dim_y] - (WORLD_SIZE / 2) <= 0 ? 'N' : 'S',
-           world.cur_idx[dim_x] - (WORLD_SIZE / 2),
-           world.cur_idx[dim_y] - (WORLD_SIZE / 2));
-    if (get_input_nonblocking(&c) == 1) {
-      switch (c) {
-      case 'n':
-        if (world.cur_idx[dim_y]) {
-          world.cur_idx[dim_y]--;
-          new_map();
-          init_npcs(&turn_heap);
-          pathfind(world.cur_map);
+    Character *npc = check_npc_around_pc();
+    if (npc && !npc->defeated){
+        mvprintw(0, 0, "A trainer has challenged you to a battle! Press Y to continue or any other key to ignore: \n");
+        int battle_input = getch();
+        if (battle_input == 'Y' ){
+         init_battle(npc);
         }
-      break;
-      case 's':
-        if (world.cur_idx[dim_y] < WORLD_SIZE - 1) {
-          world.cur_idx[dim_y]++;
-          new_map();
-          init_npcs(&turn_heap);
-          pathfind(world.cur_map);
-        }
-        break;
-      case 'e':
-        if (world.cur_idx[dim_x] < WORLD_SIZE - 1) {
-          world.cur_idx[dim_x]++;
-          new_map();
-          init_npcs(&turn_heap);
-          pathfind(world.cur_map);
-        }
-        break;
-      case 'w':
-        if (world.cur_idx[dim_x]) {
-          world.cur_idx[dim_x]--;
-          new_map();
-          init_npcs(&turn_heap);
-          pathfind(world.cur_map);
-        }
-        break;
-      case 'q':
+        refresh();
+    }
+    else if (!moved){
+      mvprintw(0, 0, "There's an obstacle in the way!\n");
+      moved = 1;
+    }
+    else{ 
+      mvprintw(0, 0, "Current position is %d%cx%d%c (%d,%d).  "
+            "Enter command: ",
+             abs(world.cur_idx[dim_x] - (WORLD_SIZE / 2)),
+             world.cur_idx[dim_x] - (WORLD_SIZE / 2) >= 0 ? 'E' : 'W',
+             abs(world.cur_idx[dim_y] - (WORLD_SIZE / 2)),
+             world.cur_idx[dim_y] - (WORLD_SIZE / 2) <= 0 ? 'N' : 'S',
+             world.cur_idx[dim_x] - (WORLD_SIZE / 2),
+             world.cur_idx[dim_y] - (WORLD_SIZE / 2));
+      }
+    int key = getch();
+    mvprintw(0, 0, "\n");
+      switch (key) {
+      case 'Q':
         quit = 1;
         break;
-      case 'f':
-        scanf(" %d %d", &x, &y);
-        if (x >= -(WORLD_SIZE / 2) && x <= WORLD_SIZE / 2 &&
-          y >= -(WORLD_SIZE / 2) && y <= WORLD_SIZE / 2) {
-          world.cur_idx[dim_x] = x + (WORLD_SIZE / 2);
-          world.cur_idx[dim_y] = y + (WORLD_SIZE / 2);
-          new_map();
-          pathfind(world.cur_map);
+      case 'k': case '8': //up
+        if (move_pc(0, -1, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
         }
+        pathfind(world.cur_map);
+      game_turn(&world.cur_map->turn_heap);
+      print_map();
+      break;
+      case 'j': case '2' :
+        if (move_pc(0, 1, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
+        }
+        pathfind(world.cur_map);
+      game_turn(&world.cur_map->turn_heap);
+      print_map();
+      break;
+      case 'h': case '4':
+        if (move_pc(-1, 0, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
+        }
+        pathfind(world.cur_map);
+      game_turn(&world.cur_map->turn_heap);
+      print_map();
         break;
-      case '?':
-      case 'h':
-        printf("Move with 'e'ast, 'w'est, 'n'orth, 's'outh or 'f'ly x y.\n"
-               "Quit with 'q'.  '?' and 'h' print this help message.\n");
+      case 'l': case '6':
+        if (move_pc(1, 0, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
+        }
+        pathfind(world.cur_map);
+      game_turn(&world.cur_map->turn_heap);
+      print_map();
         break;
+      case 'y': case '7':
+        if (move_pc(-1, -1, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
+        }
+        pathfind(world.cur_map);
+      game_turn(&world.cur_map->turn_heap);
+      print_map();
+        break;
+      case 'u': case '9':
+        if (move_pc(1, -1, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
+        }
+        pathfind(world.cur_map);
+      game_turn(&world.cur_map->turn_heap);
+      print_map();
+        break;
+      case 'b': case '1':
+        if (move_pc(-1, 1, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
+        }
+        pathfind(world.cur_map);
+      game_turn(&world.cur_map->turn_heap);
+      print_map();
+        break;
+      case 'n': case '3':
+        if (move_pc(1, 1, &world.cur_map->turn_heap) == 0) {
+          moved = 0;
+        }
+        pathfind(world.cur_map);
+        game_turn(&world.cur_map->turn_heap);
+        print_map();
+        break;
+      case '>':
+      case '5': case ' ':
+        pathfind(world.cur_map);
+        game_turn(&world.cur_map->turn_heap);
+        print_map();
+        break;
+      case 't':
+        print_trainers();
+        clear();
+        refresh();
+        break;
+      case 'f':{
+        int x;
+        int y;
+        echo();
+        mvprintw(0, 0, "Enter coordinates to fly i.e (50, 50): ");
+        scanw((char *) " (%d, %d)", &x, &y);
+        noecho();
+        if (x > -200 && x < 200 && y > -200  && y < 200) {
+          world.cur_idx[dim_x] = x + 200;
+          world.cur_idx[dim_y] = y + 200;
+          mvprintw(0, 0, "Flying to (%d, %d)...\n", x, y);
+          mvprintw(1, 0, "Press any key to continue.\n");
+          getch();
+          if (new_map()) {
+            init_npcs(&world.cur_map->turn_heap);
+          }
+          init_pc();
+          pathfind(world.cur_map);
+        } else {
+          mvprintw(0, 0, "Invalid coordinates for flying.\n");
+        }
+      }
       default:
-        fprintf(stderr, "%c: Invalid input.  Enter '?' for help.\n", c);
+        mvprintw(0, 0, "%c: Invalid input.  Enter '?' for help.\n", key);
         break;
       }
-    }
-
-      pathfind(world.cur_map);
-      game_turn(&turn_heap);
-      print_map();
-      usleep(250000);
-
+      
   }
 
   delete_world();
 
-  printf("But how are you going to be the very best if you quit?\n");
-  
+  mvprintw(4, 0, "But how are you going to be the very best if you quit?\n");
+  endwin();
   return 0;
 }

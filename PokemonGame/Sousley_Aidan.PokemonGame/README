@@ -1,1 +1,2 @@
-This is a work in progress rpoject, wher I am constructing my own pokemon game varient. So far I have the map generator, and npc movement implemented.
+Sources for assignment 6, implemented flying command by similar logic previously added from assignment 3. Also added the ability to move between
+ maps by adding checker logic everytime move_pc is called. Also converted file into c++.
