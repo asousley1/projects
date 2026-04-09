@@ -1,3 +1,0 @@
-03/30 - Added logic to move_pc for the pc to have the ability to switch maps. 
-03/31 - Fixed a bug where game new npcs kept getting added to old maps, added flying command, and switched file to c++
-04/01 - Had a bug where game would freeze randomly while calculating npc paths after switching maps, fixed by adding turn_heap to the map class.
