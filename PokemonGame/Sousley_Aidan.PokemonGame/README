@@ -1,1 +1,47 @@
-Sources for assignment 9, implemented pokemon battling between trainers as well as capturing wild pokemon. Also added the players bag contain pokeballs, revives, and potions. 
+# Terminal-Based Pokémon Game (C/C++)
+
+A terminal-based Pokémon-style game built in C/C++ using ncurses. The game features real-time map navigation, procedurally generated worlds, and NPCs with pathfinding AI.
+
+---
+
+## Features
+
+- Procedurally generated world using seed-based randomization
+- Real-time player movement and map rendering with ncurses
+- NPCs with pathfinding AI that navigate terrain dynamically
+- Multiple terrain types affecting movement behavior
+- Encounter system (e.g., random Pokémon encounters in grass)
+- Interactive locations such as Poké Marts and Centers
+
+---
+
+## Technical Highlights
+
+- Implemented pathfinding logic for NPC movement across a dynamic grid
+- Designed a tile-based map system with different terrain costs
+- Built real-time rendering loop using ncurses for smooth terminal updates
+- Used modular C/C++ design to separate game logic, rendering, and input handling
+
+---
+
+## Tech Stack
+
+- Language: C / C++
+- Libraries: ncurses
+- Concepts: Pathfinding, Procedural Generation, Game Loops, Data Structures
+
+## Installation & Setup
+
+### Prerequisites
+- GCC / G++
+- ncurses library
+
+### Install ncurses (if needed)
+
+Mac (Homebrew):
+```bash
+brew install ncurses
+
+### Build and Run
+make
+./pokemon_game
