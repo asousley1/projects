@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <unordered_map>
 
 #include "heap.h"
 
@@ -79,6 +80,8 @@ typedef int16_t pair_t[num_dims];
 #define heightpair(pair) (m->height[pair[dim_y]][pair[dim_x]])
 #define heightxy(x, y) (m->height[y][x])
 
+#define BATTLE_START_ROW 10
+
 uint32_t world_time = 0;
 int num_trainers = 10;
 
@@ -107,6 +110,487 @@ typedef enum __attribute__ ((__packed__)) character_type {
   char_explorer,
 } character_type_t;
 
+class Move  {
+public:
+    int id;
+    char identifier[50];
+    int generation_id;
+    int type_id;
+    int power;
+    int pp;
+    int accuracy;
+    int priority;
+    int target_id;
+    int damage_class_id;
+    int effect_id;
+    int effect_chance;
+    int contest_type_id;
+    int contest_effect_id;
+    int super_contest_effect_id;
+
+    Move(int id, const char *identifier, int generation_id, int type_id, int power, int pp, int accuracy, int priority, int target_id, int damage_class_id,
+         int effect_id, int effect_chance, int contest_type_id, int contest_effect_id, int super_contest_effect_id) {
+        this->id = id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->generation_id = generation_id;
+        this->type_id = type_id;
+        this->power = power;
+        this->pp = pp;
+        this->accuracy = accuracy;
+        this->priority = priority;
+        this->target_id = target_id;
+        this->damage_class_id = damage_class_id;
+        this->effect_id = effect_id;
+        this->effect_chance = effect_chance;
+        this->contest_type_id = contest_type_id;
+        this->contest_effect_id = contest_effect_id;
+        this->super_contest_effect_id = super_contest_effect_id;
+    }
+
+    Move() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        generation_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        power = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        pp = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        accuracy = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        priority = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        target_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        damage_class_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        effect_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        effect_chance = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        contest_type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        contest_effect_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        super_contest_effect_id = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class Pokemon  {
+public:
+    int id;
+    char identifier[50];
+    int height;
+    int weight;
+    int base_experience;
+    int order;
+    int is_default;
+    int level;
+    std::vector<Move> moves;
+    int hp;
+    int attack;
+    int defense;
+    int speed;
+    int special_attack;
+    int special_defense;
+    int gender; 
+    bool is_shiny;
+    int current_hp;
+
+    Pokemon(int id, const char *identifier, int height, int weight, int base_experience, int order, int is_default) {
+        this->id = id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->height = height;
+        this->weight = weight;
+        this->base_experience = base_experience;
+        this->order = order;
+        this->is_default = is_default;
+        this->level = 0;
+    }
+
+    Pokemon() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        height = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        weight = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        base_experience = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        order = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_default = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class PokemonMove  {
+  public:
+    int pokemon_id;
+    int version_group_id;
+    int move_id;
+    int pokemon_move_method_id;
+    int level;
+    int order;
+
+    PokemonMove(int pokemon_id, int version_group_id, int move_id, int pokemon_move_method_id, int level, int order) {
+        this->pokemon_id = pokemon_id;
+        this->version_group_id = version_group_id;
+        this->move_id = move_id;
+        this->pokemon_move_method_id = pokemon_move_method_id;
+        this->level = level;
+        this->order = order;
+    }
+
+    PokemonMove() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        version_group_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        move_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        pokemon_move_method_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        level = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        order = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class PokemonSpecies  {
+  public:
+    int id;
+    char identifier[50];
+    int generation_id;
+    int evolves_from_species_id;
+    int evolution_chain_id;
+    int color_id;
+    int shape_id;
+    int habitat_id;
+    int gender_rate;
+    int capture_rate;
+    int base_happiness;
+    int is_baby;
+    int hatch_counter;
+    int has_gender_differences;
+    int growth_rate_id;
+    int forms_switchable;
+    int is_legendary;
+    int is_mythical;
+    int order;
+    int conquest_order;
+
+    PokemonSpecies(int id, const char *identifier, int generation_id, int evolves_from_species_id, int evolution_chain_id, int color_id,
+                   int shape_id, int habitat_id, int gender_rate, int capture_rate, int base_happiness, int is_baby, int hatch_counter,
+                   int has_gender_differences, int growth_rate_id, int forms_switchable, int is_legendary, int is_mythical, int order, int conquest_order) {
+        this->id = id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->generation_id = generation_id;
+        this->evolves_from_species_id = evolves_from_species_id;
+        this->evolution_chain_id = evolution_chain_id;
+        this->color_id = color_id;
+        this->shape_id = shape_id;
+        this->habitat_id = habitat_id;
+        this->gender_rate = gender_rate;
+        this->capture_rate = capture_rate;
+        this->base_happiness = base_happiness;
+        this->is_baby = is_baby;
+        this->hatch_counter = hatch_counter;
+        this->has_gender_differences = has_gender_differences;
+        this->growth_rate_id = growth_rate_id;
+        this->forms_switchable = forms_switchable;
+        this->is_legendary = is_legendary;
+        this->is_mythical = is_mythical;
+        this->order = order;
+        this->conquest_order = conquest_order;
+    }
+
+    PokemonSpecies() {};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        generation_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        evolves_from_species_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        evolution_chain_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        color_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        shape_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        habitat_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        gender_rate = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        capture_rate = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        base_happiness = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_baby = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        hatch_counter = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        has_gender_differences = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        growth_rate_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        forms_switchable = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_legendary = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        is_mythical = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        order = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        conquest_order = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class Experience  {
+  public:
+    int growth_rate_id;
+    int level;
+    int experience;
+
+    Experience(int growth_rate_id, int level, int experience){
+        this->growth_rate_id = growth_rate_id;
+        this->level = level;
+        this->experience = experience;
+    }
+
+    Experience(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        growth_rate_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        level = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        experience = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class TypeName  {
+  public:
+    int type_id;
+    int local_language_id;
+    char name[50];
+
+    TypeName(int type_id, int local_language_id, const char *name){
+        this->type_id = type_id;
+        this->local_language_id = local_language_id;
+        strncpy(this->name, name, sizeof(this->name) - 1);
+        this->name[sizeof(this->name) - 1] = '\0';
+    }
+
+    TypeName(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        local_language_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(name, token.c_str(), sizeof(name) - 1);
+        name[sizeof(name) - 1] = '\0';
+    }
+};
+
+class PokemonStat  {
+  public:
+    int pokemon_id;
+    int stat_id;
+    int base_stat;
+    int effort;
+
+    PokemonStat(int pokemon_id, int stat_id, int base_stat, int effort){
+        this->pokemon_id = pokemon_id;
+        this->stat_id = stat_id;
+        this->base_stat = base_stat;
+        this->effort = effort;
+    }
+
+    PokemonStat(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        stat_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        base_stat = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        effort = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class Stats  {
+  public:
+    int id;
+    char identifier[50];
+    int is_battle_only;
+    int game_index;
+    int damage_class_id;
+
+    Stats(int id, int damage_class_id, const char *identifier, int is_battle_only, int game_index){
+        this->id = id;
+        this->damage_class_id = damage_class_id;
+        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
+        this->identifier[sizeof(this->identifier) - 1] = '\0';
+        this->is_battle_only = is_battle_only;
+        this->game_index = game_index;
+    }
+
+    Stats(){};
+    
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        damage_class_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
+        identifier[sizeof(identifier) - 1] = '\0';
+
+        std::getline(ss, token, ',');
+        is_battle_only = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        game_index = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
+class PokemonTypes {
+  public:
+    int pokemon_id;
+    int type_id;
+    int slot;
+
+    PokemonTypes(int pokemon_id, int type_id, int slot){
+        this->pokemon_id = pokemon_id;
+        this->type_id = type_id;
+        this->slot = slot;
+    }
+
+    PokemonTypes(){};
+
+    void parseLine(const std::string& line) {
+        std::stringstream ss(line);
+        std::string token;
+
+        std::getline(ss, token, ',');
+        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        type_id = token.empty() ? INT_MAX : std::stoi(token);
+
+        std::getline(ss, token, ',');
+        slot = token.empty() ? INT_MAX : std::stoi(token);
+    }
+};
+
 class Character {
 public:
   character_type_t type;
@@ -115,9 +599,19 @@ public:
   int next_turn;
   int direction;
   int defeated;
+  std::vector<Pokemon> pokemon;
+};
+
+class Bag {
+  public:
+    int num_pokeballs;
+    int num_potions;
+    int num_revives;
 };
 
 class PC : public Character {
+  public:
+    Bag bag;
 };
 
 class NPC : public Character {
@@ -130,6 +624,22 @@ public:
   int8_t n, s, e, w;
   Character *character_map[MAP_Y][MAP_X];
   heap_t turn_heap;
+};
+
+
+class Trainer_Battle{
+public:
+  Character *npc;
+  int npc_pokemon_index;
+  bool is_battle_over;
+  Pokemon *pc_pokemon;
+
+  Trainer_Battle(Character *npc, int npc_pokemon_index, Pokemon *pc_pokemon) {
+    this->npc = npc;
+    this->npc_pokemon_index = npc_pokemon_index;
+    this->is_battle_over = false;
+    this->pc_pokemon = pc_pokemon;
+  }
 };
 
 typedef struct queue_node {
@@ -148,6 +658,14 @@ public:
   int rival_dist[MAP_Y][MAP_X];
   PC pc;
 };
+
+
+std::unordered_map<int, Pokemon> pokemon_map;
+std::unordered_map<int, int> pokemon_type_map;
+std::vector<Pokemon> pokemon_data;
+std::unordered_map<int, Move> move_map;
+std::unordered_map<int, std::vector<PokemonMove>> moves_by_pokemon;
+std::unordered_map<int, PokemonStat> pokemon_stats_map;
 
 /* Even unallocated, a WORLD_SIZE x WORLD_SIZE array of pointers is a very *
  * large thing to put on the stack.  To avoid that, world is a global.     */
@@ -1380,6 +1898,103 @@ void print_rival_dist()
   }
 }
 
+Pokemon spawn_pokemon(){
+
+  int id = std::rand() % 1092;
+  id++; 
+  Pokemon p = pokemon_data[id];
+  int level;
+
+  int y_distance = abs(world.cur_idx[dim_y] - 200 );
+  int x_distance = abs(world.cur_idx[dim_x] - 200 );
+  int manhattan_distance = y_distance + x_distance;
+
+  if (manhattan_distance <= 200){
+    int max_level = manhattan_distance / 2;
+    level = std::rand() % (max_level + 1) + 1;
+  }  
+  else{
+    int min_level = (manhattan_distance - 200);
+    level = std::rand() % 100;
+    if (level < min_level){
+      level = min_level;
+    }
+    if (level > 100){
+      level = 100;
+    }
+  }
+  p.level = level;
+
+  auto &moves = moves_by_pokemon[id];
+  PokemonMove min_level_move;
+    for (const PokemonMove &move : moves){
+      if (move.pokemon_move_method_id == 1){
+        min_level_move = move;
+        break;
+      }
+    }
+  std::vector<PokemonMove> acceptable_moves;
+
+  for (const PokemonMove &move : moves){
+    if ((move.level < min_level_move.level) && (move.pokemon_move_method_id == 1)){
+      min_level_move = move;
+    }
+    if ((move.level <= p.level) && (move.pokemon_move_method_id == 1)){
+
+      acceptable_moves.push_back(move);
+    }
+  }
+
+  if (acceptable_moves.empty()){
+    acceptable_moves.push_back(min_level_move);
+  }
+
+  int num_acceptable_moves = std::min(2, (int) acceptable_moves.size());
+
+  for (int i = 0; i < num_acceptable_moves; i++){
+    int move_index = std::rand() % acceptable_moves.size();
+    if (i == 1){
+      if (acceptable_moves[move_index].move_id == p.moves[0].id){
+        break;
+      }
+    }
+    p.moves.push_back(move_map[acceptable_moves[move_index].move_id]);
+    acceptable_moves.erase(acceptable_moves.begin() + move_index);
+  }
+  PokemonStat ps = pokemon_stats_map[id];
+
+  int iv_hp = std::rand() % 16;
+  int iv_attack = std::rand() % 16;
+  int iv_defense = std::rand() % 16;
+  int iv_speed = std::rand() % 16;
+  int iv_spatk = std::rand() % 16;
+  int iv_spdef = std::rand() % 16;
+
+  p.hp = ((ps.base_stat + iv_hp) * 2 * level) / 100 + level + 10;
+  p.current_hp = p.hp;
+  p.attack  = ((ps.base_stat + iv_attack) * 2 * level) / 100 + 5;
+  p.defense = ((ps.base_stat + iv_defense) * 2 * level) / 100 + 5;
+  p.speed   = ((ps.base_stat + iv_speed) * 2 * level) / 100 + 5;
+  p.special_attack  = ((ps.base_stat + iv_spatk) * 2 * level) / 100 + 5;
+  p.special_defense = ((ps.base_stat + iv_spdef) * 2 * level) / 100 + 5;
+
+  int gender = std::rand() % 1;
+  if (gender == 0){
+    p.gender = 1;
+  } else {
+    p.gender = 0;
+  }
+
+  int shiny_chance = std::rand() % 8192;
+  if (shiny_chance == 0){
+    p.is_shiny = true;
+  } else {
+    p.is_shiny = false;
+  }
+
+  return p;
+}
+
 void spawn_trainer(Character *c)
 {
   int x,y;
@@ -1399,6 +2014,22 @@ void spawn_trainer(Character *c)
   c->next_turn = 0;
   c->direction = 0;
   c->defeated = 0;
+
+  Pokemon p = spawn_pokemon();
+  c->pokemon.push_back(p);
+
+  bool quit = false;
+  int counter = 0;
+  while (!quit){
+    int random = rand() % 100;
+    if (random < 60 && counter < 6){
+      p = spawn_pokemon();
+      c->pokemon.push_back(p);
+      counter++;
+    } else {
+      quit = true;
+    }
+  }
 
 }
 
@@ -1685,6 +2316,113 @@ void init_npcs(heap_t *turn_heap){
 
 }
 
+void clear_battle_screen(){
+  for (int i = 0; i < MAP_Y; i++){
+    mvprintw(BATTLE_START_ROW + i, 0, "%*s", MAP_X, " ");
+  }
+  refresh();
+}
+
+int init_wild_pokemon_battle(Pokemon &wild_poke){
+  clear_battle_screen();
+  refresh();
+  mvprintw(BATTLE_START_ROW, 0, "A wild %s appeared! (Level %d, HP: %d)", wild_poke.identifier, wild_poke.level, wild_poke.hp);
+  refresh();
+
+  bool is_captured = false;
+ 
+  while (!is_captured){
+    mvprintw(BATTLE_START_ROW + 1, 0, "Would you like to (1) Open your bag, or (2) Run?\n");
+    refresh();
+    int choice = getch();
+    switch(choice){
+      case '1': {
+        mvprintw(BATTLE_START_ROW + 2, 0, "Choose an item to use:");
+        mvprintw(BATTLE_START_ROW + 3, 0, "1. Poke Ball (%d) 2. Revive (%d) 3. Potion (%d)", world.pc.bag.num_pokeballs, world.pc.bag.num_revives, world.pc.bag.num_potions);
+        int item_choice = getch() - '0';
+        if (item_choice == 1){
+          if (world.pc.bag.num_pokeballs > 0){
+            world.pc.bag.num_pokeballs--;
+            if (world.pc.pokemon.size() >= 6){
+              mvprintw(BATTLE_START_ROW + 4, 0, "You cannot capture more than 6 Pokemon! You need to switch out a Pokemon before you can capture this one.");
+              refresh();
+            } else {
+              world.pc.pokemon.push_back(wild_poke);
+              mvprintw(BATTLE_START_ROW + 4, 0, "Congratulations! You captured %s!", wild_poke.identifier);
+              refresh();
+              is_captured = true;
+            }
+          }
+      }
+      else if (item_choice == 2){
+        if (world.pc.bag.num_revives > 0){
+          world.pc.bag.num_revives--;
+          mvprintw(BATTLE_START_ROW + 4, 0, "Which Pokemon would you like to use the Revive on?");
+          for (int i = 0; i < world.pc.pokemon.size(); i++){
+            mvprintw(BATTLE_START_ROW + 5 + i, 0, "%d. %s (Level %d, HP: %d)", i + 1, world.pc.pokemon[i].identifier, world.pc.pokemon[i].level, world.pc.pokemon[i].current_hp);
+          }
+          int revive_choice = getch() - '0';
+          Pokemon &revive_poke = world.pc.pokemon[revive_choice - 1];
+          revive_poke.current_hp = revive_poke.hp / 2;
+          mvprintw(BATTLE_START_ROW + 4, 0, "You used a Revive on %s! It has been revived with %d HP!", revive_poke.identifier, revive_poke.current_hp);
+          refresh();
+        } else {
+          mvprintw(BATTLE_START_ROW + 4, 0, "You have no Revives left!");
+          refresh();
+        }
+      }
+      else if (item_choice == 3){
+        if (world.pc.bag.num_potions > 0){
+          world.pc.bag.num_potions--;
+          mvprintw(BATTLE_START_ROW + 4, 0, "Which Pokemon would you like to use the Potion on?");
+          for (int i = 0; i < world.pc.pokemon.size(); i++){
+            mvprintw(BATTLE_START_ROW + 5 + i, 0, "%d. %s (Level %d, HP: %d)", i + 1, world.pc.pokemon[i].identifier, world.pc.pokemon[i].level, world.pc.pokemon[i].current_hp);
+          }
+          int potion_choice = getch() - '0';
+          Pokemon &potion_poke = world.pc.pokemon[potion_choice - 1];
+          if (potion_poke.current_hp <= 0){
+            mvprintw(BATTLE_START_ROW + 4, 0, "You cannot use a Potion on a fainted Pokemon!");
+            refresh();
+          } else {
+            potion_poke.current_hp = std::min(potion_poke.current_hp + 20, potion_poke.hp);
+            mvprintw(BATTLE_START_ROW + 4, 0, "You used a Potion on %s! It has been healed to %d HP!", potion_poke.identifier, potion_poke.current_hp);
+            refresh();
+          }
+        } else {
+          mvprintw(BATTLE_START_ROW + 4, 0, "You have no Potions left!");
+          refresh();
+        }
+      }
+      else {
+        mvprintw(BATTLE_START_ROW + 4, 0, "Invalid choice!");
+        refresh();
+      }
+      break;
+    }
+    case '2' : {
+      mvprintw(BATTLE_START_ROW + 4, 0, "You ran away safely!");
+      refresh();
+      is_captured = true;
+    }
+    }
+  }
+  return 1;
+}
+
+void encounter_pokemon(){
+
+  Pokemon p = spawn_pokemon();
+  mvprintw(0, 0, "You have encountered a level %d %s! (HP: %d, Attack: %d, Defense: %d, Speed: %d, Sp. Atk: %d, Sp. Def: %d)",
+           p.level, p.identifier, p.hp, p.attack, p.defense, p.speed, p.special_attack, p.special_defense);
+  mvprintw(1, 0, "Press c to try to capture it or any other key to run...");
+  int choice = getch();
+
+  if (choice == 'c'){
+    init_wild_pokemon_battle(p);
+  }
+
+}
+
 int move_pc(int dx, int dy, heap_t *turn_heap){
   int nx = world.pc.x + dx;
   int ny = world.pc.y + dy;
@@ -1740,6 +2478,38 @@ int move_pc(int dx, int dy, heap_t *turn_heap){
   }
   world.pc.x = nx;
   world.pc.y = ny;
+
+    if (world.cur_map->map[ny][nx] == ter_grass){
+    int encounter_chance = std::rand() % 100;
+    if (encounter_chance < 10){
+      encounter_pokemon();
+    }
+  }
+
+    else if(world.cur_map->map[ny][nx] == ter_mart){
+      mvprintw(0, 0, "Welcome to the Poke Mart! You can buy items here.");
+      mvprintw(1, 0, "Press s to refill your supplies");
+      int choice = getch();
+      if (choice == 's'){
+        world.pc.bag.num_pokeballs = 10;
+        world.pc.bag.num_potions = 5;
+        world.pc.bag.num_revives = 3;
+      }
+      refresh();
+    }
+
+    else if(world.cur_map->map[ny][nx] == ter_center){
+      mvprintw(0, 0, "Welcome to the Pokemon Center!");
+      mvprintw(1, 0, "Press s to heal your Pokemon");
+      int choice = getch();
+      if (choice == 's'){
+        for (Pokemon &p : world.pc.pokemon){
+          p.current_hp = p.hp;
+        }
+      }
+    }
+      refresh();
+
   return 1;
 }
 
@@ -1789,6 +2559,22 @@ int get_input_nonblocking(char *c)
   return 0;  // no input
 }
 
+int print_pokemon(Character *c){
+  WINDOW *win = newwin(10, 50, 1, 1);
+  box(win, 0, 0);
+  mvwprintw(win, 1, 1, "Pokemon:");
+  size_t i;
+  for (i = 0; i < c->pokemon.size(); i++){
+    Pokemon &p = c->pokemon[i];
+    mvwprintw(win, i + 2, 2, "%d. %s (Level %d)", i + 1, p.identifier, p.level);
+  }
+  mvwprintw(win, i + 2, 2, "Press any key to escape...");
+  wrefresh(win);
+  getch();
+  delwin(win);
+  return 0;
+
+}
 
 int print_trainers(){
   
@@ -1877,12 +2663,277 @@ Character *check_npc_around_pc(){
   return NULL;
 }
 
-int init_battle(Character *t){
-  mvprintw(0, 0, "A battle has started!\n");
+int calculate_damage(Pokemon *attacker, Pokemon *defender, Move &move){
+int base = (((2 * attacker->level) / 5 + 2) * move.power * attacker->attack / defender->defense) / 50 + 2;
+
+int critical_chance = std::rand() % 256;
+bool is_critical = false;
+if (critical_chance < pokemon_stats_map[attacker->id].base_stat / 2){ 
+  is_critical = true;
+}
+double critical = is_critical ? 1.5 : 1.0;
+double random = (rand() % 16 + 85) / 100.0;
+double stab = (move.type_id == pokemon_type_map[attacker->id]) ? 1.5 : 1.0;
+double type = 1.0;
+
+int damage = (int)(base * critical * random * stab * type);
+
+return damage;
+}
+
+int npc_attack(Trainer_Battle &battle, Move npc_move){
+  int rand = std::rand() % 100;
+  if (rand > npc_move.accuracy){
+    mvprintw(BATTLE_START_ROW + 2, 0, "The opponent's %s used %s but missed!", battle.npc->pokemon[battle.npc_pokemon_index].identifier, npc_move.identifier);
+    mvprintw(BATTLE_START_ROW + 3, 0, "Press any key to continue...");
+    refresh();
+    getch();
+    mvprintw(BATTLE_START_ROW + 2, 0, "%*s", MAP_X, " ");\
+    return 1;
+  }
+  Pokemon *npc_poke = &battle.npc->pokemon[battle.npc_pokemon_index];
+  Pokemon *pc_poke = battle.pc_pokemon;
+  int damage = calculate_damage(npc_poke, pc_poke, npc_move);
+            pc_poke->current_hp -= damage;
+            mvprintw(BATTLE_START_ROW + 2, 0, "The opponent's %s used %s and dealt %d damage!", npc_poke->identifier, npc_move.identifier, damage);
+            mvprintw(BATTLE_START_ROW + 3, 0, "Press any key to continue...");
+            refresh();
+            getch();
+            mvprintw(BATTLE_START_ROW + 2, 0, "%*s", MAP_X, " ");
+            mvprintw(BATTLE_START_ROW + 3, 0, "%*s", MAP_X, " ");
+            if (pc_poke->current_hp <= 0){
+              pc_poke->current_hp = 0;
+              mvprintw(BATTLE_START_ROW + 7, 0, "Your %s fainted!", pc_poke->identifier);
+              refresh();
+              bool has_usable_pokemon = false;
+              for (Pokemon &p : world.pc.pokemon){
+                if (p.current_hp > 0){
+                  has_usable_pokemon = true;
+                  break;
+                }
+              }
+              if (has_usable_pokemon == false){
+                mvprintw(BATTLE_START_ROW + 8, 0, "You were defeated...");
+                refresh();
+                battle.is_battle_over = true;
+                return 1;
+              }
+              else {
+                mvprintw(BATTLE_START_ROW + 4, 0, "Choose a Pokemon to switch in:");
+                for (int i = 0; i < world.pc.pokemon.size(); i++){
+                  mvprintw(BATTLE_START_ROW + 5 + i, 0, "%d. %s (Level %d, HP: %d)", i + 1, world.pc.pokemon[i].identifier, world.pc.pokemon[i].level, world.pc.pokemon[i].current_hp);
+                }
+                while(pc_poke->current_hp <= 0){
+                  int switch_choice = getch() - '0';
+                  if (world.pc.pokemon[switch_choice - 1].current_hp <= 0){
+                    mvprintw(BATTLE_START_ROW + 7, 0, "You cannot switch to a fainted Pokemon!");
+                    refresh();
+                    battle.is_battle_over = true;
+                    return 1;
+                  } else {
+                    Pokemon temp = world.pc.pokemon[0];
+                    world.pc.pokemon[0] = world.pc.pokemon[switch_choice - 1];
+                    world.pc.pokemon[switch_choice - 1] = temp;
+                    pc_poke = &world.pc.pokemon[0];
+                    mvprintw(BATTLE_START_ROW + 4, 0, "Go %s! (Level %d, HP: %d)", pc_poke->identifier, pc_poke->level, pc_poke->current_hp); 
+                    refresh();
+                  }
+              }
+              mvprintw(BATTLE_START_ROW + 4, 0, "%*s", MAP_X, " ");
+            }
+          }
+    return 1;
+}
+
+int pc_attack(Trainer_Battle &battle, Move move, Pokemon *pc_poke, Pokemon *npc_poke){
+  int rand = std::rand() % 100;
+  if (rand > move.accuracy){
+    mvprintw(BATTLE_START_ROW + 2, 0, " %s used %s but missed!", pc_poke->identifier, move.identifier);
+    mvprintw(BATTLE_START_ROW + 3, 0, "Press any key to continue...");
+    refresh();
+    getch();
+    mvprintw(BATTLE_START_ROW + 2, 0, "%*s", MAP_X, " ");\
+    return 1;
+  }
+  int damage = calculate_damage(pc_poke, npc_poke, move);
+            npc_poke->current_hp -= damage;
+            mvprintw(BATTLE_START_ROW + 6, 0, "Your %s used %s and dealt %d damage!", pc_poke->identifier, move.identifier, damage);
+            mvprintw(BATTLE_START_ROW + 7, 0, "Press any key to continue...");
+            refresh();
+            getch();
+            mvprintw(BATTLE_START_ROW + 7, 0, "%*s", MAP_X, " ");
+            mvprintw(BATTLE_START_ROW + 6, 0, "%*s", MAP_X, " ");
+            if (npc_poke->current_hp <= 0){
+              npc_poke->current_hp = 0;
+              mvprintw(BATTLE_START_ROW + 7, 0, "The opponent's %s fainted!", npc_poke->identifier);
+              refresh();
+              battle.npc_pokemon_index++;
+              if (battle.npc_pokemon_index >= battle.npc->pokemon.size()){
+                clear_battle_screen();
+                mvprintw(BATTLE_START_ROW + 8, 0, "You defeated the opponent!");
+                mvprintw(BATTLE_START_ROW + 9, 0, "Press any key to continue...");
+                getch();
+                refresh();
+                battle.is_battle_over = true;
+                battle.npc->defeated = 1;
+                return 1;
+              } else {
+                npc_poke = &battle.npc->pokemon[battle.npc_pokemon_index];
+                mvprintw(BATTLE_START_ROW, 0, "The opponent sent out %s! (Level %d, HP: %d)", npc_poke->identifier, npc_poke->level, npc_poke->current_hp);
+                refresh();
+              }
+            }
+    return 1;
+}
+
+int init_trainer_battle(Character *t){
+
+  clear_battle_screen();
   refresh();
-  mvprintw(0, 0, "You won the battle!\n");
-  refresh();
-  t->defeated = 1;
+  int npc_pokemon_index = 0;
+
+  Trainer_Battle battle(t, npc_pokemon_index, &world.pc.pokemon[0] );
+
+  while (!battle.is_battle_over){
+    Pokemon *npc_poke = &t->pokemon[npc_pokemon_index];
+    Pokemon *pc_poke = &world.pc.pokemon[0];
+    while(world.pc.pokemon[0].current_hp <= 0){
+      int check_index = 0;
+      if (check_index >= world.pc.pokemon.size()){
+        mvprintw(BATTLE_START_ROW + 8, 0, "You have no more usable Pokemon! You were defeated...");
+        refresh();
+        battle.is_battle_over = true;
+        return 1;
+      }
+    }
+    mvprintw(BATTLE_START_ROW, 0, "Would you like to (1) Fight, (2) Open Bag, (3) Run, or (4) Switch Pokemon?\n");
+    int choice = getch();
+    switch (choice){
+      case '1': {
+        mvprintw(BATTLE_START_ROW, 0, "%*s", MAP_X, " ");
+        mvprintw(BATTLE_START_ROW + 4, 0, "Go %s! (Level %d, HP: %d)", pc_poke->identifier, pc_poke->level, pc_poke->current_hp); 
+        mvprintw(BATTLE_START_ROW + 1, 0, "The opponent sent out %s! (Level %d, HP: %d)", npc_poke->identifier, npc_poke->level, npc_poke->current_hp);
+        refresh();
+          mvprintw(BATTLE_START_ROW + 5, 0, "Choose a move:");
+          for (int i = 0; i < pc_poke->moves.size(); i++){
+            mvprintw(BATTLE_START_ROW + 6 + i, 0, "%d. %s (PP: %d)", i + 1, pc_poke->moves[i].identifier, pc_poke->moves[i].pp);
+          }
+          int move_choice = getch() - '0';
+          for (int i = BATTLE_START_ROW + 5; i < BATTLE_START_ROW + 6 + pc_poke->moves.size(); i++){
+            mvprintw(i, 0, "%*s", MAP_X, " ");
+          }
+          Move move = pc_poke->moves[move_choice - 1];
+          int npc_move_rand = rand() % npc_poke->moves.size();
+          Move npc_move = npc_poke->moves[npc_move_rand];
+          if (npc_move.priority > move.priority || (npc_move.priority == move.priority && npc_poke->speed > pc_poke->speed)){
+            npc_attack(battle, npc_move);
+            if(!battle.is_battle_over){
+              pc_attack(battle, move, pc_poke, npc_poke);
+            }
+          } else if (move.priority == npc_move.priority && pc_poke->speed == npc_poke->speed){
+             int coin_flip = rand() % 2;
+              if (coin_flip == 0){
+                npc_attack(battle, npc_move);
+                if(!battle.is_battle_over){
+                  pc_attack(battle, move, pc_poke, npc_poke);
+                }
+              } else {
+                pc_attack(battle, move, pc_poke, npc_poke);
+                if(!battle.is_battle_over){
+                  npc_attack(battle, npc_move);
+                }
+              }
+          } else {
+             pc_attack(battle, move, pc_poke, npc_poke);
+              if(!battle.is_battle_over){
+                  npc_attack(battle, npc_move);
+                }
+          }
+          refresh();
+          break;
+        }
+      case '4':{
+        mvprintw(BATTLE_START_ROW + 4, 0, "Choose a Pokemon to switch to:");
+        for (int i = 0; i < world.pc.pokemon.size(); i++){
+          mvprintw(BATTLE_START_ROW + 5 + i, 0, "%d. %s (Level %d, HP: %d)", i + 1, world.pc.pokemon[i].identifier, world.pc.pokemon[i].level, world.pc.pokemon[i].current_hp);
+        }
+        int switch_choice = getch() - '0';
+        if (world.pc.pokemon[switch_choice - 1].current_hp <= 0){
+          mvprintw(BATTLE_START_ROW + 7, 0, "You cannot switch to a fainted Pokemon!");
+          refresh();
+        } else {
+          Pokemon temp = world.pc.pokemon[0];
+          world.pc.pokemon[0] = world.pc.pokemon[switch_choice - 1];
+          world.pc.pokemon[switch_choice - 1] = temp;
+          pc_poke = &world.pc.pokemon[0];
+          refresh();
+        }
+        mvprintw(BATTLE_START_ROW + 5, 0, "Press any key to continue...");
+        getch();
+        clear_battle_screen();
+        npc_attack(battle, npc_poke->moves[rand() % npc_poke->moves.size()]);
+        break;
+      }
+      case '3' : {
+        mvprintw(BATTLE_START_ROW + 4, 0, "You can't run away from a trainer battle!");
+        mvprintw(BATTLE_START_ROW + 5, 0, "Press any key to continue...");
+        refresh();
+        getch();
+        clear_battle_screen();
+        break;
+      }
+      case '2': {
+        clear_battle_screen();
+        mvprintw(BATTLE_START_ROW, 0, "Choose an item to use:");
+        mvprintw(BATTLE_START_ROW + 1, 0, "1. Revive (%d), 2. Potion(%d)", world.pc.bag.num_revives, world.pc.bag.num_potions);
+        int item_choice = getch() - '0';
+        if(item_choice == 1){
+          if (world.pc.bag.num_revives > 0){
+            world.pc.bag.num_revives--;
+            mvprintw(BATTLE_START_ROW + 4, 0, "Choose a Pokemon to revive:");
+            for (int i = 0; i < world.pc.pokemon.size(); i++){
+              mvprintw(BATTLE_START_ROW + 5 + i, 0, "%d. %s (Level %d, HP: %d)", i + 1, world.pc.pokemon[i].identifier, world.pc.pokemon[i].level, world.pc.pokemon[i].current_hp);
+              }
+            int revive_choice = getch() - '0';
+            Pokemon &revive_poke = world.pc.pokemon[revive_choice - 1];
+            revive_poke.current_hp = revive_poke.hp / 2;
+            mvprintw(BATTLE_START_ROW + 4, 0, "You used a Revive on %s! It has been revived with %d HP!", revive_poke.identifier, revive_poke.current_hp);
+            refresh();
+          } else {
+            mvprintw(BATTLE_START_ROW + 4, 0, "You have no Revives left!");
+            refresh();
+          }
+        }
+        else if (item_choice == 2){
+          if (pc_poke->current_hp <= 0){
+            mvprintw(BATTLE_START_ROW + 4, 0, "You cannot use a Potion on a fainted Pokemon!");
+            refresh();
+          }
+          else{
+            if (world.pc.bag.num_potions > 0){
+              world.pc.bag.num_potions--;
+              pc_poke->current_hp = std::min(pc_poke->current_hp + 20, pc_poke->hp);
+              mvprintw(BATTLE_START_ROW + 4, 0, "You used a Potion on %s! It has been healed to %d HP!", pc_poke->identifier, pc_poke->current_hp);
+              refresh();
+            } else {
+              mvprintw(BATTLE_START_ROW + 4, 0, "You have no Potions left!");
+              refresh();
+            }
+          }
+        }
+      else{
+        mvprintw(BATTLE_START_ROW + 4, 0, "Invalid choice!");
+        refresh();
+      }
+      mvprintw(BATTLE_START_ROW + 5, 0, "Press any key to continue...");
+      getch();
+      clear_battle_screen();
+      refresh();
+      npc_attack(battle, npc_poke->moves[rand() % npc_poke->moves.size()]);
+      break;
+    }
+  }
+  }
   return 1;
 }
 
@@ -1911,475 +2962,6 @@ public:
     }
     return data;
   }
-};
-
-class Pokemon  {
-public:
-    int id;
-    char identifier[50];
-    int height;
-    int weight;
-    int base_experience;
-    int order;
-    int is_default;
-
-    Pokemon(int id, const char *identifier, int height, int weight, int base_experience, int order, int is_default) {
-        this->id = id;
-        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
-        this->identifier[sizeof(this->identifier) - 1] = '\0';
-        this->height = height;
-        this->weight = weight;
-        this->base_experience = base_experience;
-        this->order = order;
-        this->is_default = is_default;
-    }
-
-    Pokemon() {};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
-        identifier[sizeof(identifier) - 1] = '\0';
-
-        std::getline(ss, token, ',');
-        height = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        weight = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        base_experience = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        order = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        is_default = token.empty() ? INT_MAX : std::stoi(token);
-    }
-};
-
-class Move  {
-public:
-    int id;
-    char identifier[50];
-    int generation_id;
-    int type_id;
-    int power;
-    int pp;
-    int accuracy;
-    int priority;
-    int target_id;
-    int damage_class_id;
-    int effect_id;
-    int effect_chance;
-    int contest_type_id;
-    int contest_effect_id;
-    int super_contest_effect_id;
-
-    Move(int id, const char *identifier, int generation_id, int type_id, int power, int pp, int accuracy, int priority, int target_id, int damage_class_id,
-         int effect_id, int effect_chance, int contest_type_id, int contest_effect_id, int super_contest_effect_id) {
-        this->id = id;
-        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
-        this->identifier[sizeof(this->identifier) - 1] = '\0';
-        this->generation_id = generation_id;
-        this->type_id = type_id;
-        this->power = power;
-        this->pp = pp;
-        this->accuracy = accuracy;
-        this->priority = priority;
-        this->target_id = target_id;
-        this->damage_class_id = damage_class_id;
-        this->effect_id = effect_id;
-        this->effect_chance = effect_chance;
-        this->contest_type_id = contest_type_id;
-        this->contest_effect_id = contest_effect_id;
-        this->super_contest_effect_id = super_contest_effect_id;
-    }
-
-    Move() {};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
-        identifier[sizeof(identifier) - 1] = '\0';
-
-        std::getline(ss, token, ',');
-        generation_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        type_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        power = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        pp = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        accuracy = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        priority = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        target_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        damage_class_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        effect_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        effect_chance = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        contest_type_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        contest_effect_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        super_contest_effect_id = token.empty() ? INT_MAX : std::stoi(token);
-    }
-};
-
-class PokemonMove  {
-  public:
-    int pokemon_id;
-    int version_group_id;
-    int move_id;
-    int pokemon_move_method_id;
-    int level;
-    int order;
-
-    PokemonMove(int pokemon_id, int version_group_id, int move_id, int pokemon_move_method_id, int level, int order) {
-        this->pokemon_id = pokemon_id;
-        this->version_group_id = version_group_id;
-        this->move_id = move_id;
-        this->pokemon_move_method_id = pokemon_move_method_id;
-        this->level = level;
-        this->order = order;
-    }
-
-    PokemonMove() {};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        version_group_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        move_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        pokemon_move_method_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        level = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        order = token.empty() ? INT_MAX : std::stoi(token);
-    }
-};
-
-class PokemonSpecies  {
-  public:
-    int id;
-    char identifier[50];
-    int generation_id;
-    int evolves_from_species_id;
-    int evolution_chain_id;
-    int color_id;
-    int shape_id;
-    int habitat_id;
-    int gender_rate;
-    int capture_rate;
-    int base_happiness;
-    int is_baby;
-    int hatch_counter;
-    int has_gender_differences;
-    int growth_rate_id;
-    int forms_switchable;
-    int is_legendary;
-    int is_mythical;
-    int order;
-    int conquest_order;
-
-    PokemonSpecies(int id, const char *identifier, int generation_id, int evolves_from_species_id, int evolution_chain_id, int color_id,
-                   int shape_id, int habitat_id, int gender_rate, int capture_rate, int base_happiness, int is_baby, int hatch_counter,
-                   int has_gender_differences, int growth_rate_id, int forms_switchable, int is_legendary, int is_mythical, int order, int conquest_order) {
-        this->id = id;
-        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
-        this->identifier[sizeof(this->identifier) - 1] = '\0';
-        this->generation_id = generation_id;
-        this->evolves_from_species_id = evolves_from_species_id;
-        this->evolution_chain_id = evolution_chain_id;
-        this->color_id = color_id;
-        this->shape_id = shape_id;
-        this->habitat_id = habitat_id;
-        this->gender_rate = gender_rate;
-        this->capture_rate = capture_rate;
-        this->base_happiness = base_happiness;
-        this->is_baby = is_baby;
-        this->hatch_counter = hatch_counter;
-        this->has_gender_differences = has_gender_differences;
-        this->growth_rate_id = growth_rate_id;
-        this->forms_switchable = forms_switchable;
-        this->is_legendary = is_legendary;
-        this->is_mythical = is_mythical;
-        this->order = order;
-        this->conquest_order = conquest_order;
-    }
-
-    PokemonSpecies() {};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
-        identifier[sizeof(identifier) - 1] = '\0';
-
-        std::getline(ss, token, ',');
-        generation_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        evolves_from_species_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        evolution_chain_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        color_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        shape_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        habitat_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        gender_rate = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        capture_rate = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        base_happiness = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        is_baby = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        hatch_counter = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        has_gender_differences = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        growth_rate_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        forms_switchable = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        is_legendary = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        is_mythical = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        order = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        conquest_order = token.empty() ? INT_MAX : std::stoi(token);
-    }
-};
-
-class Experience  {
-  public:
-    int growth_rate_id;
-    int level;
-    int experience;
-
-    Experience(int growth_rate_id, int level, int experience){
-        this->growth_rate_id = growth_rate_id;
-        this->level = level;
-        this->experience = experience;
-    }
-
-    Experience(){};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        growth_rate_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        level = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        experience = token.empty() ? INT_MAX : std::stoi(token);
-    }
-};
-
-class TypeName  {
-  public:
-    int type_id;
-    int local_language_id;
-    char name[50];
-
-    TypeName(int type_id, int local_language_id, const char *name){
-        this->type_id = type_id;
-        this->local_language_id = local_language_id;
-        strncpy(this->name, name, sizeof(this->name) - 1);
-        this->name[sizeof(this->name) - 1] = '\0';
-    }
-
-    TypeName(){};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        type_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        local_language_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        strncpy(name, token.c_str(), sizeof(name) - 1);
-        name[sizeof(name) - 1] = '\0';
-    }
-};
-
-class PokemonStat  {
-  public:
-    int pokemon_id;
-    int stat_id;
-    int base_stat;
-    int effort;
-
-    PokemonStat(int pokemon_id, int stat_id, int base_stat, int effort){
-        this->pokemon_id = pokemon_id;
-        this->stat_id = stat_id;
-        this->base_stat = base_stat;
-        this->effort = effort;
-    }
-
-    PokemonStat(){};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        stat_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        base_stat = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        effort = token.empty() ? INT_MAX : std::stoi(token);
-    }
-};
-
-class Stats  {
-  public:
-    int id;
-    char identifier[50];
-    int is_battle_only;
-    int game_index;
-    int damage_class_id;
-
-    Stats(int id, int damage_class_id, const char *identifier, int is_battle_only, int game_index){
-        this->id = id;
-        this->damage_class_id = damage_class_id;
-        strncpy(this->identifier, identifier, sizeof(this->identifier) - 1);
-        this->identifier[sizeof(this->identifier) - 1] = '\0';
-        this->is_battle_only = is_battle_only;
-        this->game_index = game_index;
-    }
-
-    Stats(){};
-    
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        damage_class_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        strncpy(identifier, token.c_str(), sizeof(identifier) - 1);
-        identifier[sizeof(identifier) - 1] = '\0';
-
-        std::getline(ss, token, ',');
-        is_battle_only = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        game_index = token.empty() ? INT_MAX : std::stoi(token);
-    }
-};
-
-class PokemonTypes {
-  public:
-    int pokemon_id;
-    int type_id;
-    int slot;
-
-    PokemonTypes(int pokemon_id, int type_id, int slot){
-        this->pokemon_id = pokemon_id;
-        this->type_id = type_id;
-        this->slot = slot;
-    }
-
-    PokemonTypes(){};
-
-    void parseLine(const std::string& line) {
-        std::stringstream ss(line);
-        std::string token;
-
-        std::getline(ss, token, ',');
-        pokemon_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        type_id = token.empty() ? INT_MAX : std::stoi(token);
-
-        std::getline(ss, token, ',');
-        slot = token.empty() ? INT_MAX : std::stoi(token);
-    }
 };
 
 void parse_and_print_pokemon_data(const char *name) {
@@ -2428,7 +3010,7 @@ void parse_and_print_pokemon_data(const char *name) {
     } else if (strcmp(name, "pokemon_stats") == 0){
       std::vector<PokemonStat> pokemon_stats_data = CSVData::parseCSV<PokemonStat>(path);
       for (const auto& ps : pokemon_stats_data) {
-          std::cout << "Pokemon ID: " << int_or_na(ps.pokemon_id) << ", Stat ID: " << int_or_na(ps.stat_id) << ", Effort: " << int_or_na(ps.effort) << std::endl;
+          std::cout << "Pokemon ID: " << int_or_na(ps.pokemon_id) << ", Stat ID: " << int_or_na(ps.stat_id) << ", Base Stat: " << int_or_na(ps.base_stat) << ", Effort: " << int_or_na(ps.effort) << std::endl;
       }
     } else if (strcmp(name, "pokemon_types") == 0){
       std::vector<PokemonTypes> pokemon_types_data = CSVData::parseCSV<PokemonTypes>(path);
@@ -2443,8 +3025,102 @@ void parse_and_print_pokemon_data(const char *name) {
     } else {
         fprintf(stderr, "Unknown data type: %s\n", name);
     }
+}
 
+void parse_pokemon_data() {
+    char path[512];
+    const char *accept[] = {"pokemon", "moves", "pokemon_moves", "pokemon_species", "experience",
+                       "type_names", "pokemon_stats", "stats", "pokemon_types"};
+    char name[50];
+    for (size_t i = 0; i < sizeof(accept) / sizeof(accept[0]); i++) {
+        strcpy(name, accept[i]);
+        snprintf(path, sizeof(path), "/share/cs327/pokedex/pokedex/data/csv/%s.csv", name);
+        FILE *file = fopen(path, "r");
+        if (!file) {
+            char *home = getenv("HOME");
+        snprintf(path, sizeof(path), "%s/.poke327/pokedex/pokedex/data/csv/%s.csv", home, name);
+        file = fopen(path, "r");
+    }
+    if (strcmp(name, "pokemon") == 0) {
+        pokemon_data = CSVData::parseCSV<Pokemon>(path);
+        for (const auto& p : pokemon_data) {
+            pokemon_map[p.id] = p;
+        }
+    } else if (strcmp(name, "moves") == 0) {
+        std::vector<Move> moves_data = CSVData::parseCSV<Move>(path);
+        for (const auto& m : moves_data) {
+            move_map[m.id] = m;
+        }
+    } else if (strcmp(name, "pokemon_moves") == 0) {
+        std::vector<PokemonMove> pokemon_moves_data = CSVData::parseCSV<PokemonMove>(path);
+        for (const auto& pm : pokemon_moves_data) {
+            moves_by_pokemon[pm.pokemon_id].push_back(pm);
+        }
+    } else if (strcmp(name, "pokemon_species") == 0) {
+        std::vector<PokemonSpecies> pokemon_species_data = CSVData::parseCSV<PokemonSpecies>(path);
+        /*for (const auto& ps : pokemon_species_data) {
+           // pokemon_species_map[ps.id] = ps;
+        }*/
+    } else if (strcmp(name, "experience") == 0) {
+        std::vector<Experience> experience_data = CSVData::parseCSV<Experience>(path);
+        for (const auto& e : experience_data) {
+            std::cout << "Growth Rate ID: " << int_or_na(e.growth_rate_id) << ", Level: " << int_or_na(e.level) << ", Experience: " << int_or_na(e.experience) << std::endl;
+        }
+    } else if (strcmp(name, "type_names") == 0){
+      std::vector<TypeName> type_names_data = CSVData::parseCSV<TypeName>(path);
+      for (const auto& tn : type_names_data) {
+          std::cout << "Type ID: " << int_or_na(tn.type_id) << ", Name: " << tn.name << std::endl;
+      }
+    } else if (strcmp(name, "pokemon_stats") == 0){
+      std::vector<PokemonStat> pokemon_stats_data = CSVData::parseCSV<PokemonStat>(path);
+      for (const auto& ps : pokemon_stats_data) {
+          pokemon_stats_map[ps.pokemon_id] = ps;
+      }
+    } else if (strcmp(name, "pokemon_types") == 0){
+      std::vector<PokemonTypes> pokemon_types_data = CSVData::parseCSV<PokemonTypes>(path);
+      for (const auto& pt : pokemon_types_data) {
+          pokemon_type_map[pt.pokemon_id] = pt.type_id;
+      }
+    } else if (strcmp(name, "stats") == 0){
+      std::vector<Stats> stats_data = CSVData::parseCSV<Stats>(path);
+      /*for (const auto& s : stats_data) {
+         // std::cout << "ID: " << int_or_na(s.id) << ", Identifier: " << s.identifier << ", Is Battle Only: " << int_or_na(s.is_battle_only) << ", Game Index: " << int_or_na(s.game_index) << std::endl;
+      }*/
+    } else {
+        fprintf(stderr, "Unknown data type: %s\n", name);
+    }
+  }
+}
 
+int pick_pokemon(){
+  mvprintw(0, 0, "Choose a Pokemon to battle with:\n");
+  Pokemon p1 = spawn_pokemon();
+  Pokemon p2 = spawn_pokemon();
+  Pokemon p3 = spawn_pokemon();
+
+  mvprintw(1, 0, "1. %s (Level %d)\n", p1.identifier, p1.level);
+  mvprintw(2, 0, "2. %s (Level %d)\n", p2.identifier, p2.level);
+  mvprintw(3, 0, "3. %s (Level %d)\n", p3.identifier, p3.level);
+  mvprintw(4, 0, "Enter the number of the Pokemon you want to choose: ");
+  refresh();
+  while (true){
+    int choice = getch();
+    switch (choice) {
+      case '1':
+        world.pc.pokemon.push_back(p1);
+        return 1;
+      case '2':
+        world.pc.pokemon.push_back(p2);
+        return 1;
+      case '3':
+        world.pc.pokemon.push_back(p3);
+        return 1;
+      default:
+        mvprintw(5, 0, "Invalid choice. Try again.");
+        getch();
+        refresh();
+  }
+}
 }
 
 int main(int argc, char *argv[])
@@ -2461,6 +3137,9 @@ int main(int argc, char *argv[])
         return 0;
       }
     }
+}
+else{
+  parse_pokemon_data();
 }
 
   initscr();
@@ -2492,7 +3171,6 @@ int main(int argc, char *argv[])
     seed = (tv.tv_usec ^ (tv.tv_sec << 20)) & 0xffffffff;
   }
 
-
   mvprintw(0, 0, "Using seed: %u\n", seed);
   srand(seed);
 
@@ -2513,18 +3191,28 @@ int main(int argc, char *argv[])
   init_npcs(&world.cur_map->turn_heap);
 
   init_pc();
+  world.pc.bag.num_pokeballs = 10;
+  world.pc.bag.num_potions = 5;
+  world.pc.bag.num_revives = 2;
+
   pathfind(world.cur_map);
   
+  pick_pokemon();
+
   int quit = 0;
 
   while (!quit) {
     print_map();  
+    refresh();
     Character *npc = check_npc_around_pc();
     if (npc && !npc->defeated){
-        mvprintw(0, 0, "A trainer has challenged you to a battle! Press Y to continue or any other key to ignore: \n");
+        mvprintw(0, 0, "A trainer has challenged you to a battle! Press q to battle, w to see their pokemon, or any other key to ignore: \n");
         int battle_input = getch();
-        if (battle_input == 'Y' ){
-         init_battle(npc);
+        if (battle_input == 'q' ){
+         init_trainer_battle(npc);
+        }
+        else if (battle_input == 'w'){
+          print_pokemon(npc);
         }
         refresh();
     }
@@ -2630,7 +3318,7 @@ int main(int argc, char *argv[])
         mvprintw(0, 0, "Enter coordinates to fly i.e (50, 50): ");
         scanw((char *) " (%d, %d)", &x, &y);
         noecho();
-        if (x > -200 && x < 200 && y > -200  && y < 200) {
+        if (x >= -200 && x <= 200 && y >= -200  && y <= 200) {
           world.cur_idx[dim_x] = x + 200;
           world.cur_idx[dim_y] = y + 200;
           mvprintw(0, 0, "Flying to (%d, %d)...\n", x, y);
@@ -2642,8 +3330,93 @@ int main(int argc, char *argv[])
           init_pc();
           pathfind(world.cur_map);
         } else {
-          mvprintw(0, 0, "Invalid coordinates for flying.\n");
+          mvprintw(0, 0, "Invalid coordinates for flying. Press any key to continue.\n");
+          getch();
         }
+      }
+      case 'B':{
+        WINDOW *win = newwin(10, 50, 1, 1);
+        box(win, 0, 0);
+        mvwprintw(win, 1, 1, "Which item would you like to use?");
+        mvwprintw(win, 2, 1, "1. Pokeballs (%d)", world.pc.bag.num_pokeballs);
+        mvwprintw(win, 3, 1, "2. Potions (%d)", world.pc.bag.num_potions);
+        mvwprintw(win, 4, 1, "3. Revives (%d)", world.pc.bag.num_revives);
+        int choice = wgetch(win);
+        for (int i = 1; i < 11; i++){
+          mvwprintw(win, i, 0, "%*s", MAP_X, " ");
+        }
+        switch (choice) {
+          case '1':{
+            mvwprintw(win, 0, 0, "You have %d Pokeballs. Press any key to continue.\n", world.pc.bag.num_pokeballs);
+            wrefresh(win);
+            getch();
+            break;
+          }
+          case '2':{
+            if (world.pc.bag.num_potions > 0){
+              world.pc.bag.num_potions--;
+            } else {
+              mvwprintw(win, 0, 0, "You have no Potions left! Press any key to continue.\n");
+              wrefresh(win);
+              getch();
+            }
+            mvwprintw(win, 0, 0, "Which Pokemon would you like to use a Potion on?");
+            for (int i = 1; i < world.pc.pokemon.size() + 1; i++){
+              mvwprintw(win, i, 1, "%d. %s (HP: %d/%d)", i, world.pc.pokemon[i - 1].identifier, world.pc.pokemon[i - 1].current_hp, world.pc.pokemon[i - 1].hp);
+            }
+            choice = wgetch(win) - '0';
+            Character *pc = &world.pc;
+            Pokemon &p = pc->pokemon[choice - 1];
+            if (p.hp != 0){
+              p.current_hp = std::min(p.current_hp + 20, p.hp);
+              mvwprintw(win, 0, 0, "You used a Potion on %s! It has been healed to %d HP! Press any key to continue.\n", p.identifier, p.current_hp);
+              wrefresh(win);
+              getch();
+            }
+            else{
+              mvwprintw(win, 1, 0, "Incorrect input or you tried to use a potion on a fainted Pokemon. Press any key to continue.\n");
+              world.pc.bag.num_potions++;
+              wrefresh(win);
+              getch();
+            }
+            break;
+          }
+          case '3':{
+            if (world.pc.bag.num_revives > 0){
+              world.pc.bag.num_revives--;
+            }
+            else{
+              mvwprintw(win, 0, 0, "You have no Revives left! Press any key to continue.\n");
+              wrefresh(win);
+              getch();
+              break;
+            }
+            mvwprintw(win, 0, 0, "Which Pokemon would you like to use a Revive on?");
+            for (int i = 1; i < world.pc.pokemon.size() + 1; i++){
+              mvwprintw(win, i, 1, "%d. %s (HP: %d/%d)", i, world.pc.pokemon[i - 1].identifier, world.pc.pokemon[i - 1].current_hp, world.pc.pokemon[i - 1].hp);
+            }
+            choice = wgetch(win) - '0';
+            for (int i = 1; i < 11; i++){
+              mvwprintw(win, i, 0, "%*s", MAP_X, " ");
+             }
+            Character *pc = &world.pc;
+            Pokemon &poke = pc->pokemon[choice - 1];
+            if (poke.hp != 0){
+              poke.current_hp = world.pc.pokemon[choice - 1].hp / 2;
+              mvwprintw(win, 1, 0, "You used a Revive on %s! It has been healed to %d HP! Press any key to continue.\n", poke.identifier, poke.current_hp);
+              wrefresh(win);
+              getch();
+            }
+            else{
+              mvwprintw(win, 1, 0, "Incorrect input. Press any key to continue.\n");
+              world.pc.bag.num_revives++;
+              wrefresh(win);
+              getch();
+            }
+            break;
+        }
+      }
+
       }
       default:
         mvprintw(0, 0, "%c: Invalid input.  Enter '?' for help.\n", key);
